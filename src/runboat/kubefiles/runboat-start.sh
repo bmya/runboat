@@ -22,7 +22,7 @@ echo "admin_passwd=$(python3 -c 'import secrets; print(secrets.token_hex())')" >
 # so we reconstruct it here by scanning /mnt/data/extra-addons/.
 if [ -d /mnt/data/extra-addons ]; then
     for dir in /mnt/data/extra-addons/*/; do
-        [ -d "$dir" ] && ADDONS_PATH="${ADDONS_PATH}:${dir%/}"
+        [ -d "$dir" ] && ADDONS_PATH="${ADDONS_PATH},${dir%/}"
     done
 fi
 
