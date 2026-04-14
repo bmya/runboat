@@ -17,6 +17,15 @@ pip list
 # Make sure users cannot create databases.
 echo "admin_passwd=$(python3 -c 'import secrets; print(secrets.token_hex())')" >> ${ODOO_RC}
 
+# Add extra addons repos (cloned during init) to ADDONS_PATH.
+# The init job exported ADDONS_PATH but that change is not persisted across pods,
+# so we reconstruct it here by scanning /mnt/data/extra-addons/.
+if [ -d /mnt/data/extra-addons ]; then
+    for dir in /mnt/data/extra-addons/*/; do
+        [ -d "$dir" ] && ADDONS_PATH="${ADDONS_PATH}:${dir%/}"
+    done
+fi
+
 # Add ADDONS_DIR to addons_path (because that oca_install_addons did,
 # but $ODOO_RC is not on a persistent volume, so it is lost when we
 # start in another container).
