@@ -29,7 +29,7 @@ if [ -n "${RUNBOAT_EXTRA_ADDONS_REPOS:-}" ]; then
         curl -sSL "https://${GITHUB_TOKEN}@github.com/${REPO}/tarball/${RUNBOAT_GIT_TARGET_BRANCH}" \
             | tar zxf - --strip-components=1 -C "${EXTRA_DIR}" \
             || echo "Warning: could not clone ${REPO}@${RUNBOAT_GIT_TARGET_BRANCH}, skipping."
-        export ADDONS_PATH="${ADDONS_PATH}:${EXTRA_DIR}"
+        export ADDONS_PATH="${ADDONS_PATH},${EXTRA_DIR}"
     done
 fi
 
