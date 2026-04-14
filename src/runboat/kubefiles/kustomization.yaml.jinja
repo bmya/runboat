@@ -50,6 +50,7 @@ configMapGenerator:
       - ADDONS_DIR=/mnt/data/odoo-addons-dir
       - RUNBOAT_GIT_REPO={{ commit_info.repo }}
       - RUNBOAT_GIT_REF={{ commit_info.git_commit }}
+      - RUNBOAT_GIT_TARGET_BRANCH={{ commit_info.target_branch }}
       {%- for key, value in build_env.items() %}
       - {{ key }}={{ value }}
       {%- endfor %}
