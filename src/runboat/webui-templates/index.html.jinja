@@ -1,323 +1,596 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <title>Runboat</title>
-        <style>
-            * { box-sizing: border-box; }
-            body {
-                font-family: Arial, Helvetica, sans-serif;
-                margin: 0;
-                display: flex;
-                flex-direction: column;
-                height: 100vh;
-            }
-            /* ── Header ── */
-            #header {
-                display: flex;
-                align-items: center;
-                gap: 1.5em;
-                padding: 0.6em 1em;
-                background: #2c3e50;
-                color: white;
-                flex-shrink: 0;
-            }
-            #header h1 {
-                margin: 0;
-                font-size: 1.2em;
-                font-weight: bold;
-            }
-            #header h1 a { color: white; text-decoration: none; }
-            .status-badge {
-                font-size: 0.85em;
-                padding: 0.2em 0.6em;
-                border-radius: 1em;
-                font-weight: bold;
-            }
-            .badge-started  { background: #27ae60; color: white; }
-            .badge-failed   { background: #e74c3c; color: white; }
-            .badge-stopped  { background: #7f8c8d; color: white; }
-            .badge-pending  { background: #f39c12; color: white; }
-            /* ── Body: sidebar + main ── */
-            #body {
-                display: flex;
-                flex: 1;
-                overflow: hidden;
-            }
-            /* ── Sidebar ── */
-            #sidebar {
-                width: 180px;
-                flex-shrink: 0;
-                background: #f4f4f4;
-                border-right: 1px solid #ddd;
-                overflow-y: auto;
-                padding: 0.75em 0;
-            }
-            #sidebar h2 {
-                font-size: 0.75em;
-                text-transform: uppercase;
-                letter-spacing: 0.1em;
-                color: #888;
-                margin: 0 0 0.5em 0;
-                padding: 0 0.75em;
-            }
-            .branch-link {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding: 0.4em 0.75em;
-                cursor: pointer;
-                text-decoration: none;
-                color: #333;
-                font-size: 0.9em;
-            }
-            .branch-link:hover { background: #e8e8e8; }
-            .branch-link.active { background: #dce9f5; font-weight: bold; }
-            .branch-dot {
-                width: 10px; height: 10px;
-                border-radius: 50%;
-                display: inline-block;
-                margin-right: 0.4em;
-                flex-shrink: 0;
-            }
-            .branch-count {
-                font-size: 0.8em;
-                color: #888;
-                background: #ddd;
-                padding: 0.1em 0.45em;
-                border-radius: 1em;
-            }
-            .dot-ok      { background: #27ae60; }
-            .dot-failed  { background: #e74c3c; }
-            .dot-pending { background: #f39c12; }
-            .dot-stopped { background: #aaa; }
-            /* ── Main ── */
-            #main {
-                flex: 1;
-                overflow-y: auto;
-                padding: 1em;
-            }
-            .branch-section {
-                margin-bottom: 1.5em;
-            }
-            .branch-section h3 {
-                font-size: 1em;
-                margin: 0 0 0.5em 0;
-                padding-bottom: 0.3em;
-                border-bottom: 2px solid #ddd;
-                display: flex;
-                align-items: center;
-                gap: 0.5em;
-            }
-            .branch-section h3 a {
-                color: #333;
-                text-decoration: none;
-                font-weight: bold;
-            }
-            .branch-section h3 a:hover { text-decoration: underline; }
-            .builds-row {
-                display: flex;
-                flex-direction: row;
-                flex-wrap: wrap;
-                gap: 0.25em;
-            }
-            runboat-build { margin: 0.25em; }
-            #connecting {
-                color: gray;
-                padding: 2em;
-            }
-            #footer {
-                color: gray;
-                font-size: small;
-                padding: 0.5em 1em;
-                border-top: 1px solid #eee;
-                flex-shrink: 0;
-            }
-        </style>
-    </head>
-    <body>
-        <div id="header">
-            <h1>🚢 <a href="/">Runboat</a></h1>
-            <span class="status-badge badge-started" id="badge-started">⬤ 0 running</span>
-            <span class="status-badge badge-pending" id="badge-pending" style="display:none">⧖ 0 pending</span>
-            <span class="status-badge badge-failed"  id="badge-failed"  style="display:none">✗ 0 failed</span>
-            <span class="status-badge badge-stopped" id="badge-stopped">○ 0 stopped</span>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Runboat</title>
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+          crossorigin="anonymous">
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+          crossorigin="anonymous">
+    <style>
+        html, body { height: 100%; margin: 0; }
+        body {
+            display: flex;
+            flex-direction: column;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 0.9rem;
+            background: #f8f9fa;
+        }
+
+        /* ── Navbar ── */
+        #navbar {
+            background: #2c3e50;
+            padding: 0.5rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-shrink: 0;
+        }
+        #navbar .brand {
+            color: white;
+            font-weight: bold;
+            font-size: 1.05rem;
+            text-decoration: none;
+        }
+        .status-pill {
+            font-size: 0.78rem;
+            padding: 0.2em 0.6em;
+            border-radius: 1em;
+            font-weight: 600;
+        }
+        .pill-running  { background: #27ae60; color: #fff; }
+        .pill-failed   { background: #e74c3c; color: #fff; }
+        .pill-stopped  { background: #6c757d; color: #fff; }
+        .pill-pending  { background: #f39c12; color: #fff; }
+        #search-box {
+            margin-left: auto;
+            width: 220px;
+            font-size: 0.85rem;
+        }
+
+        /* ── Layout ── */
+        #layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ── Sidebar ── */
+        #sidebar {
+            width: 200px;
+            flex-shrink: 0;
+            background: #fff;
+            border-right: 1px solid #dee2e6;
+            overflow-y: auto;
+            padding: 0.75rem 0;
+        }
+        .sidebar-heading {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #adb5bd;
+            padding: 0.5rem 0.85rem 0.25rem;
+        }
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.32rem 0.85rem;
+            text-decoration: none;
+            color: #343a40;
+            font-size: 0.85rem;
+            cursor: pointer;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+        }
+        .sidebar-item:hover { background: #f1f3f5; }
+        .sidebar-item.active { background: #e7f1ff; font-weight: 600; color: #0d6efd; }
+        .sidebar-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin-right: 0.4rem;
+            background: #adb5bd;
+        }
+        .dot-ok      { background: #198754; }
+        .dot-failed  { background: #dc3545; }
+        .dot-pending { background: #fd7e14; }
+        .dot-stopped { background: #adb5bd; }
+        .sidebar-count {
+            font-size: 0.72rem;
+            background: #e9ecef;
+            color: #6c757d;
+            padding: 0.1em 0.45em;
+            border-radius: 1em;
+        }
+
+        /* ── Main ── */
+        #main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem 1.25rem;
+        }
+        .branch-section { margin-bottom: 1.5rem; }
+        .branch-section-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #6c757d;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 0.3rem;
+            margin-bottom: 0.75rem;
+        }
+        .cards-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+        }
+
+        /* ── Build card (Odoo runbot style) ── */
+        .build-card {
+            width: 220px;
+            border-radius: 6px;
+            border: 1px solid rgba(0,0,0,.08);
+            overflow: hidden;
+            font-size: 0.82rem;
+        }
+        .build-card-header {
+            padding: 0.3rem 0.6rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(0,0,0,.06);
+        }
+        .build-card-header a {
+            color: inherit;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.78rem;
+        }
+        .build-card-header a:hover { text-decoration: underline; }
+        .build-card-time {
+            font-size: 0.72rem;
+            color: #6c757d;
+        }
+        .build-card-body { padding: 0.35rem 0.5rem; }
+        .build-slot {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.18rem 0;
+            border-bottom: 1px solid rgba(0,0,0,.04);
+        }
+        .build-slot:last-child { border-bottom: none; }
+        .slot-icon {
+            width: 16px;
+            text-align: center;
+            font-size: 0.75rem;
+            flex-shrink: 0;
+        }
+        .slot-name {
+            flex: 1;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            color: #343a40;
+            font-size: 0.78rem;
+        }
+        .slot-name a { color: inherit; text-decoration: none; }
+        .slot-name a:hover { text-decoration: underline; }
+        .slot-actions { display: flex; gap: 2px; flex-shrink: 0; }
+        .slot-btn {
+            border: none;
+            background: none;
+            cursor: pointer;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 0.72rem;
+            color: #6c757d;
+        }
+        .slot-btn:hover { background: rgba(0,0,0,.08); color: #343a40; }
+        .slot-btn:disabled { opacity: 0.35; cursor: default; }
+        .slot-btn.btn-open { color: #0d6efd; }
+        .slot-btn.btn-stop { color: #dc3545; }
+        .slot-btn.btn-start { color: #198754; }
+
+        /* Card background by worst status */
+        .card-ok      { background: #d1e7dd; }  /* bg-success-subtle */
+        .card-failed  { background: #f8d7da; }  /* bg-danger-subtle  */
+        .card-pending { background: #cff4fc; }  /* bg-info-subtle    */
+        .card-stopped { background: #f8f9fa; }  /* bg-light          */
+
+        #footer {
+            color: #6c757d;
+            font-size: 0.75rem;
+            padding: 0.4rem 1rem;
+            border-top: 1px solid #dee2e6;
+            background: #fff;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── Navbar ── -->
+<div id="navbar">
+    <a href="/" class="brand">🚢 Runboat</a>
+    <span class="status-pill pill-running" id="pill-running">⬤ 0</span>
+    <span class="status-pill pill-pending" id="pill-pending" style="display:none">⧖ 0</span>
+    <span class="status-pill pill-failed"  id="pill-failed"  style="display:none">✗ 0</span>
+    <span class="status-pill pill-stopped" id="pill-stopped">○ 0</span>
+    <input id="search-box" class="form-control form-control-sm"
+           type="search" placeholder="🔍 buscar rama o PR…">
+</div>
+
+<!-- ── Layout ── -->
+<div id="layout">
+
+    <!-- Sidebar -->
+    <nav id="sidebar">
+        <div class="sidebar-heading">Repositorios</div>
+        <div id="repo-list"></div>
+
+        <div class="sidebar-heading" style="margin-top:0.5rem">Ramas</div>
+        <div id="branch-list"></div>
+    </nav>
+
+    <!-- Main -->
+    <div id="main">
+        <div id="connecting" class="text-muted p-3">Conectando…</div>
+        <div id="builds"></div>
+    </div>
+</div>
+
+<div id="footer">
+    {{ footer_html }}
+    {{ additional_footer_html }}
+</div>
+
+<script>
+// ── Estado global ─────────────────────────────────────────────────────────────
+const builds     = {};       // name → build
+const prCache    = {};       // "repo#pr" → {head_ref, title} | "loading" | "error"
+let activeBranch = null;     // null = todas
+let searchTerm   = '';
+
+// ── Utilidades ────────────────────────────────────────────────────────────────
+
+function timeAgo(isoStr) {
+    const diff = Math.floor((Date.now() - new Date(isoStr)) / 1000);
+    if (diff < 60)   return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+    return `${Math.floor(diff/86400)}d ago`;
+}
+
+function repoShort(fullRepo) {
+    // "bmya/odoo-bmya" → "odoo-bmya"
+    return fullRepo.split('/')[1] || fullRepo;
+}
+
+function branchSortKey(name) {
+    if (name === 'master') return '00000';
+    const m = name.match(/^(\d+)\.(\d+)/);
+    if (m) return String(100000 - parseInt(m[1]) * 100 - parseInt(m[2])).padStart(6,'0');
+    return 'z' + name;
+}
+
+// ── Status helpers ────────────────────────────────────────────────────────────
+const PENDING_STATUSES = new Set(['initializing','starting','stopping','to_initialize']);
+
+function worstStatus(buildList) {
+    if (buildList.some(b => b.status === 'failed'))                 return 'failed';
+    if (buildList.some(b => PENDING_STATUSES.has(b.status)))        return 'pending';
+    if (buildList.some(b => b.status === 'started'))                return 'ok';
+    return 'stopped';
+}
+
+function cardClass(ws) {
+    return {failed:'card-failed', pending:'card-pending', ok:'card-ok', stopped:'card-stopped'}[ws];
+}
+
+function dotClass(ws) {
+    return {failed:'dot-failed', pending:'dot-pending', ok:'dot-ok', stopped:'dot-stopped'}[ws];
+}
+
+function statusIcon(s) {
+    const icons = {
+        started:      '<i class="fa fa-circle text-success"></i>',
+        failed:       '<i class="fa fa-circle text-danger"></i>',
+        stopped:      '<i class="fa fa-circle text-secondary"></i>',
+        initializing: '<i class="fa fa-spinner fa-spin text-info"></i>',
+        starting:     '<i class="fa fa-spinner fa-spin text-success"></i>',
+        stopping:     '<i class="fa fa-spinner fa-spin text-secondary"></i>',
+    };
+    return icons[s] || '<i class="fa fa-circle-o text-muted"></i>';
+}
+
+// ── PR info cache ─────────────────────────────────────────────────────────────
+async function fetchPrInfo(repo, pr) {
+    const key = `${repo}#${pr}`;
+    if (prCache[key] && prCache[key] !== 'loading') return prCache[key];
+    if (prCache[key] === 'loading') return null;
+    prCache[key] = 'loading';
+    try {
+        const r = await fetch(`/api/v1/pr-info?repo=${encodeURIComponent(repo)}&pr=${pr}`);
+        prCache[key] = r.ok ? await r.json() : { head_ref: '', title: '' };
+    } catch(e) {
+        prCache[key] = { head_ref: '', title: '' };
+    }
+    return prCache[key];
+}
+
+// Warm up cache for all PR builds lazily
+function warmPrCache() {
+    for (const b of Object.values(builds)) {
+        if (b.commit_info.pr) {
+            const key = `${b.commit_info.repo}#${b.commit_info.pr}`;
+            if (!prCache[key]) fetchPrInfo(b.commit_info.repo, b.commit_info.pr);
+        }
+    }
+}
+
+// ── Grouping ──────────────────────────────────────────────────────────────────
+function groupBuilds() {
+    // Group by target_branch + pr (null pr = branch build grouped alone)
+    const groups = {};   // key → {target_branch, pr, repo, builds:[]}
+    for (const b of Object.values(builds)) {
+        const pr = b.commit_info.pr;
+        const tb = b.commit_info.target_branch;
+        const repo = b.commit_info.repo;
+        // Group key: same target_branch + pr (across repos is intentional)
+        const key = `${tb}::${pr ?? 'null'}`;
+        if (!groups[key]) groups[key] = { target_branch: tb, pr, repo, builds: [] };
+        groups[key].builds.push(b);
+    }
+    return groups;
+}
+
+// ── Filtering ─────────────────────────────────────────────────────────────────
+function matchesSearch(group) {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    // Match target_branch
+    if (group.target_branch.toLowerCase().includes(term)) return true;
+    // Match PR number
+    if (group.pr && String(group.pr).includes(term)) return true;
+    // Match cached head_ref
+    if (group.pr) {
+        const key = `${group.repo}#${group.pr}`;
+        const info = prCache[key];
+        if (info && info !== 'loading' && info.head_ref.toLowerCase().includes(term)) return true;
+        if (info && info !== 'loading' && info.title.toLowerCase().includes(term)) return true;
+    }
+    return false;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() {
+    const groups = groupBuilds();
+
+    // Group groups by target_branch
+    const byBranch = {};
+    const allRepos = new Set();
+    for (const g of Object.values(groups)) {
+        if (!byBranch[g.target_branch]) byBranch[g.target_branch] = [];
+        byBranch[g.target_branch].push(g);
+        for (const b of g.builds) allRepos.add(b.commit_info.repo);
+    }
+
+    const branches = Object.keys(byBranch).sort((a,b) =>
+        branchSortKey(a).localeCompare(branchSortKey(b))
+    );
+
+    // ── Sidebar: repos ──
+    const repoList = document.getElementById('repo-list');
+    repoList.innerHTML = '';
+    for (const repo of [...allRepos].sort()) {
+        const a = document.createElement('a');
+        a.className = 'sidebar-item';
+        a.href = `https://github.com/${repo}`;
+        a.target = '_blank';
+        a.innerHTML = `<span>${repoShort(repo)}</span><i class="fa fa-external-link fa-xs text-muted"></i>`;
+        repoList.appendChild(a);
+    }
+
+    // ── Sidebar: branches ──
+    const branchList = document.getElementById('branch-list');
+    branchList.innerHTML = '';
+    for (const br of branches) {
+        const allBranchBuilds = byBranch[br].flatMap(g => g.builds);
+        const ws = worstStatus(allBranchBuilds);
+        const count = allBranchBuilds.length;
+        const btn = document.createElement('button');
+        btn.className = 'sidebar-item' + (activeBranch === br ? ' active' : '');
+        btn.innerHTML =
+            `<span><span class="sidebar-dot ${dotClass(ws)}"></span>${br}</span>`
+            + `<span class="sidebar-count">${count}</span>`;
+        btn.addEventListener('click', () => {
+            activeBranch = (activeBranch === br) ? null : br;
+            render();
+        });
+        branchList.appendChild(btn);
+    }
+
+    // ── Main: branch sections ──
+    const buildsDiv = document.getElementById('builds');
+    buildsDiv.innerHTML = '';
+
+    const visibleBranches = activeBranch ? [activeBranch] : branches;
+
+    for (const br of visibleBranches) {
+        if (!byBranch[br]) continue;
+        const brGroups = byBranch[br].filter(matchesSearch);
+        if (brGroups.length === 0) continue;
+
+        const section = document.createElement('div');
+        section.className = 'branch-section';
+        section.innerHTML = `<div class="branch-section-title">${br}</div><div class="cards-grid"></div>`;
+        const grid = section.querySelector('.cards-grid');
+
+        for (const group of brGroups) {
+            grid.appendChild(buildCard(group));
+        }
+
+        buildsDiv.appendChild(section);
+    }
+}
+
+function buildCard(group) {
+    const ws = worstStatus(group.builds);
+    const card = document.createElement('div');
+    card.className = `build-card ${cardClass(ws)}`;
+
+    // Header
+    const firstBuild = group.builds[0];
+    const prLink = group.pr
+        ? `https://github.com/${group.repo}/pull/${group.pr}`
+        : firstBuild.repo_target_branch_link;
+    const prLabel = group.pr ? `PR #${group.pr}` : group.target_branch;
+    const ago = timeAgo(firstBuild.created);
+    const prKey = group.pr ? `${group.repo}#${group.pr}` : null;
+    const headRef = prKey && prCache[prKey] && prCache[prKey] !== 'loading'
+        ? prCache[prKey].head_ref : '';
+
+    card.innerHTML = `
+        <div class="build-card-header">
+            <a href="${prLink}" target="_blank">${prLabel}</a>
+            <span class="build-card-time">${ago}</span>
         </div>
-        <div id="body">
-            <nav id="sidebar">
-                <h2>Branches</h2>
-                <div id="branch-list"></div>
-            </nav>
-            <div id="main">
-                <div id="connecting">Connecting…</div>
-                <div id="builds"></div>
-            </div>
-        </div>
-        <div id="footer">
-            {{ footer_html }}
-            {{ additional_footer_html }}
-        </div>
+        ${headRef ? `<div style="font-size:0.7rem;padding:0.15rem 0.6rem;color:#495057;opacity:0.8;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${headRef}">${headRef}</div>` : ''}
+        <div class="build-card-body"></div>
+    `;
 
-        <script type="module">
-            import {RunboatBuildElement} from './runboat-build-element.js';
-            customElements.define('runboat-build', RunboatBuildElement);
+    const body = card.querySelector('.build-card-body');
+    for (const b of group.builds) {
+        body.appendChild(buildSlot(b));
+    }
 
-            // ── State ──────────────────────────────────────────────────
-            const builds = {};   // name → build object
+    return card;
+}
 
-            // ── Status header ──────────────────────────────────────────
-            async function refreshStatus() {
-                try {
-                    const r = await fetch('/api/v1/status');
-                    if (!r.ok) return;
-                    const s = await r.json();
-                    const started  = (s.started  || 0) + (s.starting  || 0);
-                    const pending  = (s.initializing || 0) + (s.stopping || 0);
-                    const failed   = s.failed   || 0;
-                    const stopped  = s.stopped  || 0;
-                    const bStarted = document.getElementById('badge-started');
-                    const bPending = document.getElementById('badge-pending');
-                    const bFailed  = document.getElementById('badge-failed');
-                    const bStopped = document.getElementById('badge-stopped');
-                    bStarted.textContent = `⬤ ${started} running`;
-                    bPending.textContent = `⧖ ${pending} pending`;
-                    bFailed.textContent  = `✗ ${failed} failed`;
-                    bStopped.textContent = `○ ${stopped} stopped`;
-                    bPending.style.display = pending > 0 ? '' : 'none';
-                    bFailed.style.display  = failed  > 0 ? '' : 'none';
-                } catch(e) {}
-            }
+function buildSlot(b) {
+    const slot = document.createElement('div');
+    slot.className = 'build-slot';
+    slot.dataset.name = b.name;
 
-            // ── Branch sorting ─────────────────────────────────────────
-            function branchSortKey(name) {
-                // master → last; version strings like "19.0", "18.0" → desc
-                if (name === 'master') return '0000';
-                const m = name.match(/^(\d+)\.(\d+)/);
-                if (m) return String(10000 - parseInt(m[1]) * 100 - parseInt(m[2])).padStart(8, '0');
-                return '9999' + name;
-            }
+    const isStarted = b.status === 'started';
+    const isStopped = b.status === 'stopped';
+    const isBusy    = PENDING_STATUSES.has(b.status);
+    const isFailed  = b.status === 'failed';
 
-            function sortedBranches(branchMap) {
-                return Object.keys(branchMap).sort((a, b) =>
-                    branchSortKey(a).localeCompare(branchSortKey(b))
-                );
-            }
+    slot.innerHTML = `
+        <span class="slot-icon">${statusIcon(b.status)}</span>
+        <span class="slot-name">
+            <a href="${b.webui_link}" title="${b.commit_info.repo}">${repoShort(b.commit_info.repo)}</a>
+        </span>
+        <span class="slot-actions">
+            <button class="slot-btn btn-open" title="Abrir Odoo"
+                    ${!isStarted ? 'disabled' : ''}
+                    onclick="window.open('${b.deploy_link}','_blank')">
+                <i class="fa fa-sign-in"></i>
+            </button>
+            <button class="slot-btn btn-start" title="Iniciar"
+                    ${(!isStopped && !isFailed) ? 'disabled' : ''}
+                    onclick="buildAction('${b.name}','start',this)">
+                <i class="fa fa-play"></i>
+            </button>
+            <button class="slot-btn btn-stop" title="Detener"
+                    ${!isStarted ? 'disabled' : ''}
+                    onclick="buildAction('${b.name}','stop',this)">
+                <i class="fa fa-stop"></i>
+            </button>
+            <button class="slot-btn" title="Reiniciar"
+                    onclick="buildAction('${b.name}','reset',this)">
+                <i class="fa fa-refresh"></i>
+            </button>
+            <a class="slot-btn" href="/api/v1/builds/${b.name}/init-log"
+               target="_blank" title="Ver log de init">
+                <i class="fa fa-file-text-o"></i>
+            </a>
+        </span>
+    `;
+    return slot;
+}
 
-            // ── Status helpers ─────────────────────────────────────────
-            const ACTIVE_STATUSES = new Set(['initializing', 'starting', 'stopping']);
+async function buildAction(name, action, btn) {
+    btn.disabled = true;
+    try {
+        await fetch(`/api/v1/builds/${name}/${action}`, {method: 'POST'});
+    } catch(e) {}
+}
 
-            function branchDotClass(buildList) {
-                if (buildList.some(b => b.status === 'failed'))       return 'dot-failed';
-                if (buildList.some(b => ACTIVE_STATUSES.has(b.status))) return 'dot-pending';
-                if (buildList.some(b => b.status === 'started'))      return 'dot-ok';
-                return 'dot-stopped';
-            }
+// ── Status header ─────────────────────────────────────────────────────────────
+async function refreshStatus() {
+    try {
+        const r = await fetch('/api/v1/status');
+        if (!r.ok) return;
+        const s = await r.json();
+        const running = (s.started || 0);
+        const pending = (s.initializing || 0) + (s.to_initialize || 0);
+        const failed  = s.failed  || 0;
+        const stopped = s.stopped || 0;
+        document.getElementById('pill-running').textContent = `⬤ ${running}`;
+        document.getElementById('pill-pending').textContent = `⧖ ${pending}`;
+        document.getElementById('pill-failed').textContent  = `✗ ${failed}`;
+        document.getElementById('pill-stopped').textContent = `○ ${stopped}`;
+        document.getElementById('pill-pending').style.display = pending > 0 ? '' : 'none';
+        document.getElementById('pill-failed').style.display  = failed  > 0 ? '' : 'none';
+    } catch(e) {}
+}
 
-            // ── Render ─────────────────────────────────────────────────
-            function render() {
-                // Group by target_branch
-                const byBranch = {};
-                for (const b of Object.values(builds)) {
-                    const br = b.commit_info.target_branch;
-                    if (!byBranch[br]) byBranch[br] = [];
-                    byBranch[br].push(b);
-                }
-                const branches = sortedBranches(byBranch);
+// ── Search ────────────────────────────────────────────────────────────────────
+let searchDebounce = null;
+document.getElementById('search-box').addEventListener('input', e => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+        searchTerm = e.target.value.trim();
+        render();
+    }, 200);
+});
 
-                // ── Sidebar ──
-                const branchList = document.getElementById('branch-list');
-                const activeBranch = new URLSearchParams(window.location.hash.slice(1)).get('branch');
-                branchList.innerHTML = '';
-                for (const br of branches) {
-                    const blds = byBranch[br];
-                    const a = document.createElement('a');
-                    a.className = 'branch-link' + (br === activeBranch ? ' active' : '');
-                    a.href = `#branch-${br}`;
-                    a.innerHTML = `<span><span class="branch-dot ${branchDotClass(blds)}"></span>${br}</span>`
-                                + `<span class="branch-count">${blds.length}</span>`;
-                    branchList.appendChild(a);
-                }
+// ── SSE ───────────────────────────────────────────────────────────────────────
+let evtSource = null;
 
-                // ── Main sections ──
-                const buildsDiv = document.getElementById('builds');
-                for (const br of branches) {
-                    const sectionId = `section-${br}`;
-                    let section = document.getElementById(sectionId);
-                    if (!section) {
-                        section = document.createElement('div');
-                        section.id = sectionId;
-                        section.className = 'branch-section';
-                        section.innerHTML =
-                            `<h3><span class="branch-dot"></span>`
-                            + `<a href="/webui/builds.html?target_branch=${encodeURIComponent(br)}">${br}</a></h3>`
-                            + `<div class="builds-row"></div>`;
-                        buildsDiv.appendChild(section);
-                    }
-                    // Update dot color
-                    section.querySelector('.branch-dot').className =
-                        `branch-dot ${branchDotClass(byBranch[br])}`;
+function onopen() {
+    document.getElementById('connecting').style.display = 'none';
+    refreshStatus();
+}
 
-                    // Sync build elements
-                    const row = section.querySelector('.builds-row');
-                    const renderedIds = new Set(
-                        [...row.querySelectorAll('runboat-build')].map(el => el.id)
-                    );
-                    const currentIds = new Set(byBranch[br].map(b => b.name));
-                    // Remove stale
-                    for (const id of renderedIds) {
-                        if (!currentIds.has(id)) row.querySelector(`#${id}`)?.remove();
-                    }
-                    // Add/update
-                    for (const b of byBranch[br]) {
-                        let el = document.getElementById(b.name);
-                        if (el) {
-                            el.build = b;
-                        } else {
-                            el = document.createElement('runboat-build');
-                            el.id = b.name;
-                            el.build = b;
-                            row.appendChild(el);
-                        }
-                    }
-                }
-                // Remove sections for branches that disappeared
-                for (const sec of [...buildsDiv.querySelectorAll('.branch-section')]) {
-                    const br = sec.id.replace('section-', '');
-                    if (!byBranch[br]) sec.remove();
-                }
-            }
+function onmessage(event) {
+    const ev = JSON.parse(event.data);
+    if (ev.event === 'upd') {
+        builds[ev.build.name] = ev.build;
+    } else if (ev.event === 'del') {
+        delete builds[ev.build.name];
+    }
+    warmPrCache();
+    render();
+    refreshStatus();
+}
 
-            // ── SSE ────────────────────────────────────────────────────
-            var evtSource = null;
+function onerror() {
+    evtSource.close();
+    setTimeout(connect, 10000);
+}
 
-            function onopen() {
-                document.getElementById('connecting').style.display = 'none';
-                refreshStatus();
-            }
+function connect() {
+    evtSource = new EventSource('/api/v1/build-events');
+    evtSource.onopen    = onopen;
+    evtSource.onmessage = onmessage;
+    evtSource.onerror   = onerror;
+}
 
-            function onmessage(event) {
-                const oEvent = JSON.parse(event.data);
-                if (oEvent.event === 'upd') {
-                    builds[oEvent.build.name] = oEvent.build;
-                } else if (oEvent.event === 'del') {
-                    delete builds[oEvent.build.name];
-                }
-                render();
-                refreshStatus();
-            }
+connect();
 
-            function onerror() {
-                evtSource.close();
-                setTimeout(connect, 10000);
-            }
-
-            function connect() {
-                evtSource = new EventSource('/api/v1/build-events');
-                evtSource.onopen    = onopen;
-                evtSource.onmessage = onmessage;
-                evtSource.onerror   = onerror;
-            }
-
-            connect();
-        </script>
-    </body>
+// Refresh PR branch names every 30s to pick up newly cached info
+setInterval(() => { warmPrCache(); render(); }, 30000);
+</script>
+</body>
 </html>

@@ -2,6 +2,7 @@ import asyncio
 import datetime
 from collections.abc import AsyncGenerator
 
+import httpx
 from ansi2html import Ansi2HTMLConverter
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
@@ -13,6 +14,7 @@ from . import github, models
 from .controller import Controller, controller
 from .db import SortOrder
 from .deps import authenticated
+from .settings import settings
 
 router = APIRouter()
 
@@ -58,6 +60,28 @@ class Build(BaseModel):
 class BuildEvent(BaseModel):
     event: models.BuildEvent
     build: Build
+
+
+class PrInfo(BaseModel):
+    head_ref: str
+    title: str
+
+
+@router.get("/pr-info", response_model=PrInfo)
+async def pr_info(repo: str, pr: int) -> PrInfo:
+    """Proxy GitHub PR info (head branch name + title) for frontend search."""
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if settings.github_token:
+        headers["Authorization"] = f"token {settings.github_token}"
+    async with httpx.AsyncClient() as client:
+        r = await client.get(
+            f"https://api.github.com/repos/{repo}/pulls/{pr}",
+            headers=headers,
+        )
+    if r.status_code != 200:
+        raise HTTPException(status_code=r.status_code, detail="GitHub API error")
+    data = r.json()
+    return PrInfo(head_ref=data["head"]["ref"], title=data["title"])
 
 
 @router.get("/status", response_model=Status)
