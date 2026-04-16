@@ -1,63 +1,273 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <title>Runboat build</title>
-        <style>
-            body {
-                font-family: Arial, Helvetica, sans-serif;
-            }
-            #footer {
-                color: gray;
-                font-size: small;
-            }
-        </style>
-    </head>
-    <body>
-        <runboat-build id="build"></runboat-build>
-        <p id="repolink"></p>
-        <div id="footer">
-            {{ footer_html }}
-            {{ additional_footer_html }}
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Runboat build</title>
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+          crossorigin="anonymous">
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+          crossorigin="anonymous">
+    <style>
+        html, body { height: 100%; margin: 0; }
+        body {
+            display: flex;
+            flex-direction: column;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 0.9rem;
+            background: #f8f9fa;
+        }
+        #navbar {
+            background: #2c3e50;
+            padding: 0.5rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-shrink: 0;
+        }
+        #navbar .brand { color: white; font-weight: bold; font-size: 1.05rem; text-decoration: none; }
+        #main { flex: 1; padding: 1.25rem; overflow-y: auto; }
+
+        /* ── Build card ── */
+        .build-card {
+            width: 240px;
+            border-radius: 6px;
+            border: 1px solid rgba(0,0,0,.08);
+            overflow: hidden;
+            font-size: 0.82rem;
+        }
+        .build-card-header {
+            padding: 0.3rem 0.6rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.3rem;
+            border-bottom: 1px solid rgba(0,0,0,.06);
+        }
+        .commit-hash {
+            font-family: monospace;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: #343a40;
+            text-decoration: none;
+        }
+        .commit-hash:hover { text-decoration: underline; }
+        .build-card-time { font-size: 0.72rem; color: #6c757d; margin-left: auto; }
+        .build-card-body { padding: 0.35rem 0.5rem; }
+
+        .build-slot {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.18rem 0;
+            border-bottom: 1px solid rgba(0,0,0,.04);
+        }
+        .build-slot:last-child { border-bottom: none; }
+        .slot-icon { width: 16px; text-align: center; font-size: 0.75rem; flex-shrink: 0; }
+        .slot-name {
+            flex: 1; overflow: hidden; white-space: nowrap;
+            text-overflow: ellipsis; color: #343a40; font-size: 0.78rem;
+        }
+        .slot-name a { color: inherit; text-decoration: none; }
+        .slot-name a:hover { text-decoration: underline; }
+        .slot-actions { display: flex; gap: 2px; flex-shrink: 0; }
+        .slot-btn {
+            border: none; background: none; cursor: pointer;
+            padding: 1px 4px; border-radius: 3px;
+            font-size: 0.72rem; color: #6c757d; text-decoration: none;
+            display: inline-flex; align-items: center;
+        }
+        .slot-btn:hover { background: rgba(0,0,0,.08); color: #343a40; }
+        .slot-btn:disabled { opacity: 0.35; cursor: default; }
+        .slot-btn.btn-open { color: #0d6efd; }
+        .slot-btn.btn-stop { color: #dc3545; }
+        .slot-btn.btn-start { color: #198754; }
+
+        .card-ok      { background: #d1e7dd; }
+        .card-failed  { background: #f8d7da; }
+        .card-pending { background: #cff4fc; }
+        .card-stopped { background: #f8f9fa; }
+
+        #footer {
+            color: #6c757d; font-size: 0.75rem;
+            padding: 0.4rem 1rem; border-top: 1px solid #dee2e6;
+            background: #fff; flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+
+<div id="navbar">
+    <a href="/" class="brand">🚢 Runboat</a>
+</div>
+
+<div id="main">
+    <div class="mb-3">
+        <a href="/" class="text-muted text-decoration-none" style="font-size:0.85rem">
+            <i class="fa fa-arrow-left"></i> Volver al inicio
+        </a>
+    </div>
+    <div id="build-info" class="mb-3" style="font-size:0.85rem;color:#6c757d">Conectando…</div>
+    <div id="build-card-container"></div>
+    <div id="repolink" class="mt-3" style="font-size:0.82rem;color:#6c757d"></div>
+</div>
+
+<div id="footer">
+    {{ footer_html }}
+    {{ additional_footer_html }}
+</div>
+
+<script>
+const PENDING_STATUSES = new Set(['initializing','starting','stopping','to_initialize']);
+
+function timeAgo(isoStr) {
+    const diff = Math.floor((Date.now() - new Date(isoStr)) / 1000);
+    if (diff < 60)   return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+    return `${Math.floor(diff/86400)}d ago`;
+}
+
+function worstStatus(builds) {
+    if (builds.some(b => b.status === 'failed')) return 'failed';
+    if (builds.some(b => PENDING_STATUSES.has(b.status))) return 'pending';
+    if (builds.some(b => b.status === 'started')) return 'ok';
+    return 'stopped';
+}
+
+function cardClass(ws) {
+    return {failed:'card-failed', pending:'card-pending', ok:'card-ok', stopped:'card-stopped'}[ws];
+}
+
+function statusIcon(s) {
+    const icons = {
+        started:      '<i class="fa fa-circle text-success"></i>',
+        failed:       '<i class="fa fa-circle text-danger"></i>',
+        stopped:      '<i class="fa fa-circle text-secondary"></i>',
+        initializing: '<i class="fa fa-spinner fa-spin text-info"></i>',
+        starting:     '<i class="fa fa-spinner fa-spin text-success"></i>',
+        stopping:     '<i class="fa fa-spinner fa-spin text-secondary"></i>',
+    };
+    return icons[s] || '<i class="fa fa-circle text-muted"></i>';
+}
+
+function repoShort(fullRepo) {
+    return fullRepo.split('/')[1] || fullRepo;
+}
+
+async function buildAction(name, action, btn) {
+    btn.disabled = true;
+    try { await fetch(`/api/v1/builds/${name}/${action}`, {method: 'POST'}); } catch(e) {}
+}
+
+function renderBuild(b) {
+    const ws = worstStatus([b]);
+    const commitShort = b.commit_info.git_commit.slice(0, 7);
+    const ago = timeAgo(b.created);
+
+    const isStarted = b.status === 'started';
+    const isStopped = b.status === 'stopped';
+    const isFailed  = b.status === 'failed';
+
+    // Build info header
+    const prText = b.commit_info.pr
+        ? `<a href="${b.repo_pr_link}" target="_blank">PR #${b.commit_info.pr}</a> · `
+        : '';
+    document.getElementById('build-info').innerHTML =
+        `${prText}<a href="${b.repo_target_branch_link}" target="_blank">${b.commit_info.repo} ${b.commit_info.target_branch}</a>`;
+
+    // Card
+    const container = document.getElementById('build-card-container');
+    container.innerHTML = `
+        <div class="build-card ${cardClass(ws)}">
+            <div class="build-card-header">
+                <a href="${b.repo_commit_link}" target="_blank" class="commit-hash">${commitShort}</a>
+                <span class="build-card-time">${ago}</span>
+            </div>
+            <div class="build-card-body">
+                <div class="build-slot">
+                    <span class="slot-icon">${statusIcon(b.status)}</span>
+                    <span class="slot-name">
+                        <a href="${b.webui_link}" title="${b.commit_info.repo}">${repoShort(b.commit_info.repo)}</a>
+                    </span>
+                    <span class="slot-actions">
+                        <button class="slot-btn btn-open" title="Abrir Odoo"
+                                id="btn-open"
+                                ${!isStarted ? 'disabled' : ''}
+                                onclick="window.open('${b.deploy_link}','_blank')">
+                            <i class="fa fa-sign-in"></i>
+                        </button>
+                        <a class="slot-btn btn-mail" href="${b.deploy_link_mailhog}"
+                           target="_blank" title="Mailhog"
+                           style="${!isStarted ? 'pointer-events:none;opacity:0.35' : ''}">
+                            <i class="fa fa-envelope-o"></i>
+                        </a>
+                        <button class="slot-btn btn-start" title="Iniciar"
+                                ${(!isStopped && !isFailed) ? 'disabled' : ''}
+                                onclick="buildAction('${b.name}','start',this)">
+                            <i class="fa fa-play"></i>
+                        </button>
+                        <button class="slot-btn btn-stop" title="Detener"
+                                ${!isStarted ? 'disabled' : ''}
+                                onclick="buildAction('${b.name}','stop',this)">
+                            <i class="fa fa-stop"></i>
+                        </button>
+                        <button class="slot-btn" title="Reiniciar"
+                                onclick="buildAction('${b.name}','reset',this)">
+                            <i class="fa fa-refresh"></i>
+                        </button>
+                        <a class="slot-btn" href="/api/v1/builds/${b.name}/init-log"
+                           target="_blank" title="Init log">
+                            <i class="fa fa-list-alt"></i>
+                        </a>
+                        <a class="slot-btn" href="/api/v1/builds/${b.name}/log"
+                           target="_blank" title="Log">
+                            <i class="fa fa-file-text-o"></i>
+                        </a>
+                    </span>
+                </div>
+            </div>
         </div>
-        <script type="module">
-            import {RunboatBuildElement} from './runboat-build-element.js'
-            customElements.define('runboat-build', RunboatBuildElement);
+        <div class="mt-2" style="font-size:0.75rem;color:#6c757d">
+            Estado: <strong>${b.status}</strong>
+        </div>
+    `;
 
-            const buildElement = document.getElementById("build");
-            var evtSource = null;
+    document.getElementById('repolink').innerHTML =
+        `Otros builds de <a href="/?repo=${b.commit_info.repo}">${b.commit_info.repo}</a>.`;
+}
 
-            function onopen(event) {
-                console.log("connected");
-            }
+// ── SSE ───────────────────────────────────────────────────────────────────────
+let evtSource = null;
 
-            function onmessage(event) {
-                var oEvent = JSON.parse(event.data);
-                const build = oEvent.build;
-                if (oEvent.event == "upd") {
-                    buildElement.build = build;
-                } else if (oEvent.event == "del") {
-                    buildElement.undeployed();
-                }
-                const repolinkElement = document.getElementById("repolink");
-                repolinkElement.innerHTML = `Other builds for <a href="./builds.html?repo=${build.commit_info.repo}">this repo</a>.`;
-            }
+function onmessage(event) {
+    const ev = JSON.parse(event.data);
+    if (ev.event === 'upd') {
+        renderBuild(ev.build);
+    } else if (ev.event === 'del') {
+        document.getElementById('build-info').textContent = 'Build eliminado.';
+        document.getElementById('build-card-container').innerHTML = '';
+    }
+}
 
-            function onerror(event) {
-                evtSource.close();
-                console.log("error, will attempt to reconnect");
-                setTimeout(connect, 10000);
-            }
+function onerror() {
+    evtSource.close();
+    setTimeout(connect, 10000);
+}
 
-            function connect() {
-                console.log("connecting...")
-                const buildName = new URLSearchParams(window.location.search).get("name");
-                evtSource = new EventSource(`/api/v1/build-events?build_name=${buildName}`);
-                evtSource.onopen = onopen;
-                evtSource.onmessage = onmessage;
-                evtSource.onerror = onerror;
-            }
+function connect() {
+    const buildName = new URLSearchParams(window.location.search).get('name');
+    if (!buildName) {
+        document.getElementById('build-info').textContent = 'No se especificó nombre de build.';
+        return;
+    }
+    evtSource = new EventSource(`/api/v1/build-events?build_name=${buildName}`);
+    evtSource.onmessage = onmessage;
+    evtSource.onerror = onerror;
+}
 
-            connect();
-        </script>
-    </body>
+connect();
+</script>
+</body>
 </html>

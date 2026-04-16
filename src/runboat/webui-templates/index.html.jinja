@@ -115,6 +115,7 @@
             overflow-y: auto;
             padding: 1rem 1.25rem;
         }
+        /* ── Branch sections ── */
         .branch-section { margin-bottom: 1.5rem; }
         .branch-section-title {
             font-size: 0.8rem;
@@ -126,15 +127,46 @@
             padding-bottom: 0.3rem;
             margin-bottom: 0.75rem;
         }
-        .cards-grid {
+
+        /* ── PR/branch row (horizontal strip of cards) ── */
+        .pr-row { margin-bottom: 0.9rem; }
+        .pr-row-label {
             display: flex;
-            flex-wrap: wrap;
-            gap: 0.6rem;
+            align-items: center;
+            gap: 0.45rem;
+            margin-bottom: 0.35rem;
+            font-size: 0.75rem;
+        }
+        .pr-row-title {
+            font-weight: 700;
+            color: #343a40;
+            text-decoration: none;
+        }
+        .pr-row-title:hover { text-decoration: underline; }
+        .pr-row-headref {
+            color: #0d6efd;
+            font-size: 0.72rem;
+            background: #e7f1ff;
+            padding: 0.05em 0.4em;
+            border-radius: 3px;
+            max-width: 180px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+        .pr-row-cards {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            gap: 0.5rem;
+            overflow-x: auto;
+            padding-bottom: 0.2rem;
         }
 
         /* ── Build card (Odoo runbot style) ── */
         .build-card {
-            width: 220px;
+            width: 200px;
+            flex-shrink: 0;
             border-radius: 6px;
             border: 1px solid rgba(0,0,0,.08);
             overflow: hidden;
@@ -145,18 +177,21 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 0.3rem;
             border-bottom: 1px solid rgba(0,0,0,.06);
         }
-        .build-card-header a {
-            color: inherit;
-            text-decoration: none;
-            font-weight: 600;
+        .commit-hash {
+            font-family: monospace;
             font-size: 0.78rem;
+            font-weight: 600;
+            color: #343a40;
+            text-decoration: none;
         }
-        .build-card-header a:hover { text-decoration: underline; }
+        .commit-hash:hover { text-decoration: underline; }
         .build-card-time {
             font-size: 0.72rem;
             color: #6c757d;
+            margin-left: auto;
         }
         .build-card-body { padding: 0.35rem 0.5rem; }
         .build-slot {
@@ -338,85 +373,105 @@ function warmPrCache() {
     }
 }
 
-// ── Grouping ──────────────────────────────────────────────────────────────────
-function groupBuilds() {
-    // Group by target_branch + pr (null pr = branch build grouped alone)
-    const groups = {};   // key → {target_branch, pr, repo, builds:[]}
+// ── Build data structure (two-level: rows → cards) ───────────────────────────
+function buildStructure() {
+    // rows: rowKey → {target_branch, pr, repo, latestCreated, cardKeys: Set}
+    // cards: cardKey → {target_branch, pr, repo, git_commit, builds: [], created}
+    const rows = {};
+    const cardMap = {};
+    const allRepos = new Set();
+
     for (const b of Object.values(builds)) {
-        const pr = b.commit_info.pr;
-        const tb = b.commit_info.target_branch;
-        const repo = b.commit_info.repo;
-        // Group key: same target_branch + pr (across repos is intentional)
-        const key = `${tb}::${pr ?? 'null'}`;
-        if (!groups[key]) groups[key] = { target_branch: tb, pr, repo, builds: [] };
-        groups[key].builds.push(b);
-    }
-    return groups;
-}
+        const { repo, target_branch, pr, git_commit } = b.commit_info;
+        allRepos.add(repo);
 
-// ── Filtering ─────────────────────────────────────────────────────────────────
-function matchesSearch(group) {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    // Match target_branch
-    if (group.target_branch.toLowerCase().includes(term)) return true;
-    // Match PR number
-    if (group.pr && String(group.pr).includes(term)) return true;
-    // Match cached head_ref / title
-    if (group.pr) {
-        for (const b of group.builds) {
-            const key = `${b.commit_info.repo}#${group.pr}`;
-            const info = prCache[key];
-            if (info && info !== 'loading' && info.head_ref.toLowerCase().includes(term)) return true;
-            if (info && info !== 'loading' && info.title.toLowerCase().includes(term)) return true;
+        // Row key: one row per PR (across repos) or per repo+branch
+        const rowKey = pr
+            ? `${target_branch}::pr${pr}`
+            : `${repo}::${target_branch}`;
+        // Card key: one card per commit
+        const cardKey = pr
+            ? `${target_branch}::pr${pr}::${git_commit}`
+            : `${repo}::${target_branch}::${git_commit}`;
+
+        if (!rows[rowKey]) {
+            rows[rowKey] = { target_branch, pr, repo, latestCreated: '', cardKeys: new Set() };
         }
+        rows[rowKey].cardKeys.add(cardKey);
+
+        if (!cardMap[cardKey]) {
+            cardMap[cardKey] = { target_branch, pr, repo, git_commit, builds: [], created: b.created };
+        }
+        cardMap[cardKey].builds.push(b);
+        if (b.created > cardMap[cardKey].created) cardMap[cardKey].created = b.created;
     }
-    return false;
+
+    // Compute latestCreated for each row (most recent card)
+    for (const row of Object.values(rows)) {
+        row.latestCreated = [...row.cardKeys]
+            .map(ck => cardMap[ck].created)
+            .sort().at(-1) || '';
+    }
+
+    return { rows, cardMap, allRepos };
 }
 
-function matchesRepo(group) {
-    if (!activeRepo) return true;
-    return group.builds.some(b => b.commit_info.repo === activeRepo);
+// ── Row filter ────────────────────────────────────────────────────────────────
+function rowMatches(row, cardMap) {
+    // Repo filter
+    if (activeRepo) {
+        const hasRepo = [...row.cardKeys].some(ck =>
+            cardMap[ck].builds.some(b => b.commit_info.repo === activeRepo)
+        );
+        if (!hasRepo) return false;
+    }
+    // Search filter
+    if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        if (row.target_branch.toLowerCase().includes(term)) return true;
+        if (row.pr && String(row.pr).includes(term)) return true;
+        if (row.pr) {
+            for (const ck of row.cardKeys) {
+                for (const b of cardMap[ck].builds) {
+                    const info = prCache[`${b.commit_info.repo}#${row.pr}`];
+                    if (info && info !== 'loading') {
+                        if (info.head_ref.toLowerCase().includes(term)) return true;
+                        if (info.title.toLowerCase().includes(term)) return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+    return true;
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
 function render() {
-    const groups = groupBuilds();
+    const { rows, cardMap, allRepos } = buildStructure();
 
-    // Group groups by target_branch
+    // Group rows by branch
     const byBranch = {};
-    const allRepos = new Set();
-    for (const g of Object.values(groups)) {
-        if (!byBranch[g.target_branch]) byBranch[g.target_branch] = [];
-        byBranch[g.target_branch].push(g);
-        for (const b of g.builds) allRepos.add(b.commit_info.repo);
+    for (const [rowKey, row] of Object.entries(rows)) {
+        const br = row.target_branch;
+        if (!byBranch[br]) byBranch[br] = [];
+        byBranch[br].push(row);
     }
 
     const branches = Object.keys(byBranch).sort((a,b) =>
         branchSortKey(a).localeCompare(branchSortKey(b))
     );
 
-    // ── Sidebar: repos (configured + active builds merged) ──
+    // ── Sidebar: repos ──
     const repoList = document.getElementById('repo-list');
     repoList.innerHTML = '';
-    // Merge configured repos with repos that actually have builds
     const allRepoNames = new Set([...configuredRepos, ...allRepos]);
     for (const repo of [...allRepoNames].sort()) {
         const item = document.createElement('div');
-        item.className = 'sidebar-item' + (activeRepo === repo ? ' active' : '');
-        item.style.display = 'flex';
-        item.style.alignItems = 'center';
+        item.style.cssText = 'display:flex;align-items:center';
         const btn = document.createElement('button');
         btn.className = 'sidebar-item' + (activeRepo === repo ? ' active' : '');
         btn.style.flex = '1';
-        btn.style.border = 'none';
-        btn.style.background = 'none';
-        btn.style.padding = '0.32rem 0.85rem';
-        btn.style.textAlign = 'left';
-        btn.style.cursor = 'pointer';
-        btn.style.color = activeRepo === repo ? '#0d6efd' : '#343a40';
-        btn.style.fontWeight = activeRepo === repo ? '600' : 'normal';
-        btn.style.fontSize = '0.85rem';
         btn.textContent = repoShort(repo);
         btn.addEventListener('click', () => {
             activeRepo = (activeRepo === repo) ? null : repo;
@@ -426,9 +481,7 @@ function render() {
         ghLink.href = `https://github.com/${repo}`;
         ghLink.target = '_blank';
         ghLink.title = 'Ver en GitHub';
-        ghLink.style.padding = '0.32rem 0.5rem 0.32rem 0';
-        ghLink.style.color = '#adb5bd';
-        ghLink.style.fontSize = '0.72rem';
+        ghLink.style.cssText = 'padding:0.32rem 0.5rem 0.32rem 0;color:#adb5bd;font-size:0.72rem';
         ghLink.innerHTML = '<i class="fa fa-external-link"></i>';
         item.appendChild(btn);
         item.appendChild(ghLink);
@@ -439,7 +492,8 @@ function render() {
     const branchList = document.getElementById('branch-list');
     branchList.innerHTML = '';
     for (const br of branches) {
-        const allBranchBuilds = byBranch[br].flatMap(g => g.builds);
+        const allBranchBuilds = byBranch[br]
+            .flatMap(row => [...row.cardKeys].flatMap(ck => cardMap[ck].builds));
         const ws = worstStatus(allBranchBuilds);
         const count = allBranchBuilds.length;
         const btn = document.createElement('button');
@@ -462,53 +516,86 @@ function render() {
 
     for (const br of visibleBranches) {
         if (!byBranch[br]) continue;
-        const brGroups = byBranch[br].filter(g => matchesRepo(g) && matchesSearch(g));
-        if (brGroups.length === 0) continue;
+
+        // Filter and sort rows: newest activity first (top row = most recent push)
+        const visibleRows = byBranch[br]
+            .filter(row => rowMatches(row, cardMap))
+            .sort((a, b) => b.latestCreated.localeCompare(a.latestCreated));
+
+        if (visibleRows.length === 0) continue;
 
         const section = document.createElement('div');
         section.className = 'branch-section';
-        section.innerHTML = `<div class="branch-section-title">${br}</div><div class="cards-grid"></div>`;
-        const grid = section.querySelector('.cards-grid');
+        section.innerHTML = `<div class="branch-section-title">${br}</div>`;
 
-        for (const group of brGroups) {
-            grid.appendChild(buildCard(group));
+        for (const row of visibleRows) {
+            section.appendChild(buildPrRow(row, cardMap));
         }
 
         buildsDiv.appendChild(section);
     }
 }
 
-function buildCard(group) {
-    const ws = worstStatus(group.builds);
-    const card = document.createElement('div');
-    card.className = `build-card ${cardClass(ws)}`;
+// ── Build a PR/branch row (horizontal strip of cards) ─────────────────────────
+function buildPrRow(row, cardMap) {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'pr-row';
 
-    // Header
-    const firstBuild = group.builds[0];
-    const prLink = group.pr
-        ? `https://github.com/${group.repo}/pull/${group.pr}`
-        : firstBuild.repo_target_branch_link;
-    const prLabel = group.pr ? `PR #${group.pr}` : group.target_branch;
-    const ago = timeAgo(firstBuild.created);
-    const prKey = group.pr ? `${group.repo}#${group.pr}` : null;
-    const headRef = prKey && prCache[prKey] && prCache[prKey] !== 'loading'
-        ? prCache[prKey].head_ref : '';
+    // Row label: PR link + head_ref (if PR)
+    const prKey = row.pr ? `${row.repo}#${row.pr}` : null;
+    const prInfo = prKey && prCache[prKey] && prCache[prKey] !== 'loading' ? prCache[prKey] : null;
+    const headRef = prInfo ? prInfo.head_ref : '';
 
-    card.innerHTML = `
+    const titleLink = row.pr
+        ? `https://github.com/${row.repo}/pull/${row.pr}`
+        : `https://github.com/${row.repo}/tree/${row.target_branch}`;
+    const titleText = row.pr ? `PR #${row.pr}` : repoShort(row.repo);
+
+    rowEl.innerHTML = `
+        <div class="pr-row-label">
+            <a href="${titleLink}" target="_blank" class="pr-row-title">${titleText}</a>
+            ${headRef ? `<span class="pr-row-headref" title="${headRef}">${headRef}</span>` : ''}
+        </div>
+        <div class="pr-row-cards"></div>
+    `;
+
+    // Sort cards newest (left) → oldest (right)
+    const sortedCards = [...row.cardKeys]
+        .map(ck => cardMap[ck])
+        .sort((a, b) => b.created.localeCompare(a.created));
+
+    const cardsEl = rowEl.querySelector('.pr-row-cards');
+    for (const card of sortedCards) {
+        cardsEl.appendChild(buildCard(card));
+    }
+
+    return rowEl;
+}
+
+function buildCard(card) {
+    const ws = worstStatus(card.builds);
+    const el = document.createElement('div');
+    el.className = `build-card ${cardClass(ws)}`;
+
+    const ago = timeAgo(card.created);
+    const commitShort = card.git_commit.slice(0, 7);
+    // First build has repo_commit_link for this commit
+    const commitLink = card.builds[0]?.repo_commit_link || '#';
+
+    el.innerHTML = `
         <div class="build-card-header">
-            <a href="${prLink}" target="_blank">${prLabel}</a>
+            <a href="${commitLink}" target="_blank" class="commit-hash">${commitShort}</a>
             <span class="build-card-time">${ago}</span>
         </div>
-        ${headRef ? `<div style="font-size:0.7rem;padding:0.15rem 0.6rem;color:#495057;opacity:0.8;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${headRef}">${headRef}</div>` : ''}
         <div class="build-card-body"></div>
     `;
 
-    const body = card.querySelector('.build-card-body');
-    for (const b of group.builds) {
+    const body = el.querySelector('.build-card-body');
+    for (const b of card.builds) {
         body.appendChild(buildSlot(b));
     }
 
-    return card;
+    return el;
 }
 
 function buildSlot(b) {
