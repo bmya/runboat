@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Runboat</title>
+        <style>
+            * { box-sizing: border-box; }
+            body {
+                font-family: Arial, Helvetica, sans-serif;
+                margin: 0;
+                display: flex;
+                flex-direction: column;
+                height: 100vh;
+            }
+            /* ── Header ── */
+            #header {
+                display: flex;
+                align-items: center;
+                gap: 1.5em;
+                padding: 0.6em 1em;
+                background: #2c3e50;
+                color: white;
+                flex-shrink: 0;
+            }
+            #header h1 {
+                margin: 0;
+                font-size: 1.2em;
+                font-weight: bold;
+            }
+            #header h1 a { color: white; text-decoration: none; }
+            .status-badge {
+                font-size: 0.85em;
+                padding: 0.2em 0.6em;
+                border-radius: 1em;
+                font-weight: bold;
+            }
+            .badge-started  { background: #27ae60; color: white; }
+            .badge-failed   { background: #e74c3c; color: white; }
+            .badge-stopped  { background: #7f8c8d; color: white; }
+            .badge-pending  { background: #f39c12; color: white; }
+            /* ── Body: sidebar + main ── */
+            #body {
+                display: flex;
+                flex: 1;
+                overflow: hidden;
+            }
+            /* ── Sidebar ── */
+            #sidebar {
+                width: 180px;
+                flex-shrink: 0;
+                background: #f4f4f4;
+                border-right: 1px solid #ddd;
+                overflow-y: auto;
+                padding: 0.75em 0;
+            }
+            #sidebar h2 {
+                font-size: 0.75em;
+                text-transform: uppercase;
+                letter-spacing: 0.1em;
+                color: #888;
+                margin: 0 0 0.5em 0;
+                padding: 0 0.75em;
+            }
+            .branch-link {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0.4em 0.75em;
+                cursor: pointer;
+                text-decoration: none;
+                color: #333;
+                font-size: 0.9em;
+            }
+            .branch-link:hover { background: #e8e8e8; }
+            .branch-link.active { background: #dce9f5; font-weight: bold; }
+            .branch-dot {
+                width: 10px; height: 10px;
+                border-radius: 50%;
+                display: inline-block;
+                margin-right: 0.4em;
+                flex-shrink: 0;
+            }
+            .branch-count {
+                font-size: 0.8em;
+                color: #888;
+                background: #ddd;
+                padding: 0.1em 0.45em;
+                border-radius: 1em;
+            }
+            .dot-ok      { background: #27ae60; }
+            .dot-failed  { background: #e74c3c; }
+            .dot-pending { background: #f39c12; }
+            .dot-stopped { background: #aaa; }
+            /* ── Main ── */
+            #main {
+                flex: 1;
+                overflow-y: auto;
+                padding: 1em;
+            }
+            .branch-section {
+                margin-bottom: 1.5em;
+            }
+            .branch-section h3 {
+                font-size: 1em;
+                margin: 0 0 0.5em 0;
+                padding-bottom: 0.3em;
+                border-bottom: 2px solid #ddd;
+                display: flex;
+                align-items: center;
+                gap: 0.5em;
+            }
+            .branch-section h3 a {
+                color: #333;
+                text-decoration: none;
+                font-weight: bold;
+            }
+            .branch-section h3 a:hover { text-decoration: underline; }
+            .builds-row {
+                display: flex;
+                flex-direction: row;
+                flex-wrap: wrap;
+                gap: 0.25em;
+            }
+            runboat-build { margin: 0.25em; }
+            #connecting {
+                color: gray;
+                padding: 2em;
+            }
+            #footer {
+                color: gray;
+                font-size: small;
+                padding: 0.5em 1em;
+                border-top: 1px solid #eee;
+                flex-shrink: 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="header">
+            <h1>🚢 <a href="/">Runboat</a></h1>
+            <span class="status-badge badge-started" id="badge-started">⬤ 0 running</span>
+            <span class="status-badge badge-pending" id="badge-pending" style="display:none">⧖ 0 pending</span>
+            <span class="status-badge badge-failed"  id="badge-failed"  style="display:none">✗ 0 failed</span>
+            <span class="status-badge badge-stopped" id="badge-stopped">○ 0 stopped</span>
+        </div>
+        <div id="body">
+            <nav id="sidebar">
+                <h2>Branches</h2>
+                <div id="branch-list"></div>
+            </nav>
+            <div id="main">
+                <div id="connecting">Connecting…</div>
+                <div id="builds"></div>
+            </div>
+        </div>
+        <div id="footer">
+            {{ footer_html }}
+            {{ additional_footer_html }}
+        </div>
+
+        <script type="module">
+            import {RunboatBuildElement} from './runboat-build-element.js';
+            customElements.define('runboat-build', RunboatBuildElement);
+
+            // ── State ──────────────────────────────────────────────────
+            const builds = {};   // name → build object
+
+            // ── Status header ──────────────────────────────────────────
+            async function refreshStatus() {
+                try {
+                    const r = await fetch('/api/v1/status');
+                    if (!r.ok) return;
+                    const s = await r.json();
+                    const started  = (s.started  || 0) + (s.starting  || 0);
+                    const pending  = (s.initializing || 0) + (s.stopping || 0);
+                    const failed   = s.failed   || 0;
+                    const stopped  = s.stopped  || 0;
+                    const bStarted = document.getElementById('badge-started');
+                    const bPending = document.getElementById('badge-pending');
+                    const bFailed  = document.getElementById('badge-failed');
+                    const bStopped = document.getElementById('badge-stopped');
+                    bStarted.textContent = `⬤ ${started} running`;
+                    bPending.textContent = `⧖ ${pending} pending`;
+                    bFailed.textContent  = `✗ ${failed} failed`;
+                    bStopped.textContent = `○ ${stopped} stopped`;
+                    bPending.style.display = pending > 0 ? '' : 'none';
+                    bFailed.style.display  = failed  > 0 ? '' : 'none';
+                } catch(e) {}
+            }
+
+            // ── Branch sorting ─────────────────────────────────────────
+            function branchSortKey(name) {
+                // master → last; version strings like "19.0", "18.0" → desc
+                if (name === 'master') return '0000';
+                const m = name.match(/^(\d+)\.(\d+)/);
+                if (m) return String(10000 - parseInt(m[1]) * 100 - parseInt(m[2])).padStart(8, '0');
+                return '9999' + name;
+            }
+
+            function sortedBranches(branchMap) {
+                return Object.keys(branchMap).sort((a, b) =>
+                    branchSortKey(a).localeCompare(branchSortKey(b))
+                );
+            }
+
+            // ── Status helpers ─────────────────────────────────────────
+            const ACTIVE_STATUSES = new Set(['initializing', 'starting', 'stopping']);
+
+            function branchDotClass(buildList) {
+                if (buildList.some(b => b.status === 'failed'))       return 'dot-failed';
+                if (buildList.some(b => ACTIVE_STATUSES.has(b.status))) return 'dot-pending';
+                if (buildList.some(b => b.status === 'started'))      return 'dot-ok';
+                return 'dot-stopped';
+            }
+
+            // ── Render ─────────────────────────────────────────────────
+            function render() {
+                // Group by target_branch
+                const byBranch = {};
+                for (const b of Object.values(builds)) {
+                    const br = b.commit_info.target_branch;
+                    if (!byBranch[br]) byBranch[br] = [];
+                    byBranch[br].push(b);
+                }
+                const branches = sortedBranches(byBranch);
+
+                // ── Sidebar ──
+                const branchList = document.getElementById('branch-list');
+                const activeBranch = new URLSearchParams(window.location.hash.slice(1)).get('branch');
+                branchList.innerHTML = '';
+                for (const br of branches) {
+                    const blds = byBranch[br];
+                    const a = document.createElement('a');
+                    a.className = 'branch-link' + (br === activeBranch ? ' active' : '');
+                    a.href = `#branch-${br}`;
+                    a.innerHTML = `<span><span class="branch-dot ${branchDotClass(blds)}"></span>${br}</span>`
+                                + `<span class="branch-count">${blds.length}</span>`;
+                    branchList.appendChild(a);
+                }
+
+                // ── Main sections ──
+                const buildsDiv = document.getElementById('builds');
+                for (const br of branches) {
+                    const sectionId = `section-${br}`;
+                    let section = document.getElementById(sectionId);
+                    if (!section) {
+                        section = document.createElement('div');
+                        section.id = sectionId;
+                        section.className = 'branch-section';
+                        section.innerHTML =
+                            `<h3><span class="branch-dot"></span>`
+                            + `<a href="/webui/builds.html?target_branch=${encodeURIComponent(br)}">${br}</a></h3>`
+                            + `<div class="builds-row"></div>`;
+                        buildsDiv.appendChild(section);
+                    }
+                    // Update dot color
+                    section.querySelector('.branch-dot').className =
+                        `branch-dot ${branchDotClass(byBranch[br])}`;
+
+                    // Sync build elements
+                    const row = section.querySelector('.builds-row');
+                    const renderedIds = new Set(
+                        [...row.querySelectorAll('runboat-build')].map(el => el.id)
+                    );
+                    const currentIds = new Set(byBranch[br].map(b => b.name));
+                    // Remove stale
+                    for (const id of renderedIds) {
+                        if (!currentIds.has(id)) row.querySelector(`#${id}`)?.remove();
+                    }
+                    // Add/update
+                    for (const b of byBranch[br]) {
+                        let el = document.getElementById(b.name);
+                        if (el) {
+                            el.build = b;
+                        } else {
+                            el = document.createElement('runboat-build');
+                            el.id = b.name;
+                            el.build = b;
+                            row.appendChild(el);
+                        }
+                    }
+                }
+                // Remove sections for branches that disappeared
+                for (const sec of [...buildsDiv.querySelectorAll('.branch-section')]) {
+                    const br = sec.id.replace('section-', '');
+                    if (!byBranch[br]) sec.remove();
+                }
+            }
+
+            // ── SSE ────────────────────────────────────────────────────
+            var evtSource = null;
+
+            function onopen() {
+                document.getElementById('connecting').style.display = 'none';
+                refreshStatus();
+            }
+
+            function onmessage(event) {
+                const oEvent = JSON.parse(event.data);
+                if (oEvent.event === 'upd') {
+                    builds[oEvent.build.name] = oEvent.build;
+                } else if (oEvent.event === 'del') {
+                    delete builds[oEvent.build.name];
+                }
+                render();
+                refreshStatus();
+            }
+
+            function onerror() {
+                evtSource.close();
+                setTimeout(connect, 10000);
+            }
+
+            function connect() {
+                evtSource = new EventSource('/api/v1/build-events');
+                evtSource.onopen    = onopen;
+                evtSource.onmessage = onmessage;
+                evtSource.onerror   = onerror;
+            }
+
+            connect();
+        </script>
+    </body>
+</html>

@@ -58,6 +58,11 @@ def mount(app: FastAPI) -> None:
     app.mount("/webui", StaticFiles(directory=webui_path), name="webui")
 
 
+@router.get("/", response_class=RedirectResponse)
+async def index() -> Response:
+    return RedirectResponse(url="/webui/index.html")
+
+
 @router.get("/builds", response_class=RedirectResponse)
 async def builds(
     repo: str,
