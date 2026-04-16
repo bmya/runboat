@@ -84,6 +84,24 @@ async def pr_info(repo: str, pr: int) -> PrInfo:
     return PrInfo(head_ref=data["head"]["ref"], title=data["title"])
 
 
+@router.get("/configured-repos", response_model=list[str])
+async def configured_repos() -> list[str]:
+    """Return all unique repo names extracted from RUNBOAT_REPOS patterns."""
+    import re as _re
+    repos: set[str] = set()
+    for repo_settings in settings.repos:
+        pattern = repo_settings.repo.strip("^$")
+        # Handle patterns like bmya/(name1|name2|...) or org/(name)
+        m = _re.match(r'^([^/(]+)/\((.+)\)$', pattern)
+        if m:
+            org = m.group(1)
+            for name in m.group(2).split("|"):
+                repos.add(f"{org}/{name}")
+        else:
+            repos.add(pattern)
+    return sorted(repos)
+
+
 @router.get("/status", response_model=Status)
 async def controller_status() -> Controller:
     return controller

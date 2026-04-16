@@ -256,7 +256,9 @@
 // ── Estado global ─────────────────────────────────────────────────────────────
 const builds     = {};       // name → build
 const prCache    = {};       // "repo#pr" → {head_ref, title} | "loading" | "error"
+let configuredRepos = [];    // all repos from RUNBOAT_REPOS config
 let activeBranch = null;     // null = todas
+let activeRepo   = null;     // null = todos los repos
 let searchTerm   = '';
 
 // ── Utilidades ────────────────────────────────────────────────────────────────
@@ -360,14 +362,21 @@ function matchesSearch(group) {
     if (group.target_branch.toLowerCase().includes(term)) return true;
     // Match PR number
     if (group.pr && String(group.pr).includes(term)) return true;
-    // Match cached head_ref
+    // Match cached head_ref / title
     if (group.pr) {
-        const key = `${group.repo}#${group.pr}`;
-        const info = prCache[key];
-        if (info && info !== 'loading' && info.head_ref.toLowerCase().includes(term)) return true;
-        if (info && info !== 'loading' && info.title.toLowerCase().includes(term)) return true;
+        for (const b of group.builds) {
+            const key = `${b.commit_info.repo}#${group.pr}`;
+            const info = prCache[key];
+            if (info && info !== 'loading' && info.head_ref.toLowerCase().includes(term)) return true;
+            if (info && info !== 'loading' && info.title.toLowerCase().includes(term)) return true;
+        }
     }
     return false;
+}
+
+function matchesRepo(group) {
+    if (!activeRepo) return true;
+    return group.builds.some(b => b.commit_info.repo === activeRepo);
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
@@ -387,16 +396,43 @@ function render() {
         branchSortKey(a).localeCompare(branchSortKey(b))
     );
 
-    // ── Sidebar: repos ──
+    // ── Sidebar: repos (configured + active builds merged) ──
     const repoList = document.getElementById('repo-list');
     repoList.innerHTML = '';
-    for (const repo of [...allRepos].sort()) {
-        const a = document.createElement('a');
-        a.className = 'sidebar-item';
-        a.href = `https://github.com/${repo}`;
-        a.target = '_blank';
-        a.innerHTML = `<span>${repoShort(repo)}</span><i class="fa fa-external-link fa-xs text-muted"></i>`;
-        repoList.appendChild(a);
+    // Merge configured repos with repos that actually have builds
+    const allRepoNames = new Set([...configuredRepos, ...allRepos]);
+    for (const repo of [...allRepoNames].sort()) {
+        const item = document.createElement('div');
+        item.className = 'sidebar-item' + (activeRepo === repo ? ' active' : '');
+        item.style.display = 'flex';
+        item.style.alignItems = 'center';
+        const btn = document.createElement('button');
+        btn.className = 'sidebar-item' + (activeRepo === repo ? ' active' : '');
+        btn.style.flex = '1';
+        btn.style.border = 'none';
+        btn.style.background = 'none';
+        btn.style.padding = '0.32rem 0.85rem';
+        btn.style.textAlign = 'left';
+        btn.style.cursor = 'pointer';
+        btn.style.color = activeRepo === repo ? '#0d6efd' : '#343a40';
+        btn.style.fontWeight = activeRepo === repo ? '600' : 'normal';
+        btn.style.fontSize = '0.85rem';
+        btn.textContent = repoShort(repo);
+        btn.addEventListener('click', () => {
+            activeRepo = (activeRepo === repo) ? null : repo;
+            render();
+        });
+        const ghLink = document.createElement('a');
+        ghLink.href = `https://github.com/${repo}`;
+        ghLink.target = '_blank';
+        ghLink.title = 'Ver en GitHub';
+        ghLink.style.padding = '0.32rem 0.5rem 0.32rem 0';
+        ghLink.style.color = '#adb5bd';
+        ghLink.style.fontSize = '0.72rem';
+        ghLink.innerHTML = '<i class="fa fa-external-link"></i>';
+        item.appendChild(btn);
+        item.appendChild(ghLink);
+        repoList.appendChild(item);
     }
 
     // ── Sidebar: branches ──
@@ -426,7 +462,7 @@ function render() {
 
     for (const br of visibleBranches) {
         if (!byBranch[br]) continue;
-        const brGroups = byBranch[br].filter(matchesSearch);
+        const brGroups = byBranch[br].filter(g => matchesRepo(g) && matchesSearch(g));
         if (brGroups.length === 0) continue;
 
         const section = document.createElement('div');
@@ -496,6 +532,11 @@ function buildSlot(b) {
                     onclick="window.open('${b.deploy_link}','_blank')">
                 <i class="fa fa-sign-in"></i>
             </button>
+            <a class="slot-btn btn-mail" href="${b.deploy_link_mailhog}"
+               target="_blank" title="Mailhog"
+               style="${!isStarted ? 'pointer-events:none;opacity:0.35' : ''}">
+                <i class="fa fa-envelope-o"></i>
+            </a>
             <button class="slot-btn btn-start" title="Iniciar"
                     ${(!isStopped && !isFailed) ? 'disabled' : ''}
                     onclick="buildAction('${b.name}','start',this)">
@@ -511,7 +552,11 @@ function buildSlot(b) {
                 <i class="fa fa-refresh"></i>
             </button>
             <a class="slot-btn" href="/api/v1/builds/${b.name}/init-log"
-               target="_blank" title="Ver log de init">
+               target="_blank" title="Init log">
+                <i class="fa fa-list-alt"></i>
+            </a>
+            <a class="slot-btn" href="/api/v1/builds/${b.name}/log"
+               target="_blank" title="Log">
                 <i class="fa fa-file-text-o"></i>
             </a>
         </span>
@@ -587,7 +632,19 @@ function connect() {
     evtSource.onerror   = onerror;
 }
 
+// Fetch all configured repos once on load
+async function fetchConfiguredRepos() {
+    try {
+        const r = await fetch('/api/v1/configured-repos');
+        if (r.ok) {
+            configuredRepos = await r.json();
+            render();
+        }
+    } catch(e) {}
+}
+
 connect();
+fetchConfiguredRepos();
 
 // Refresh PR branch names every 30s to pick up newly cached info
 setInterval(() => { warmPrCache(); render(); }, 30000);
