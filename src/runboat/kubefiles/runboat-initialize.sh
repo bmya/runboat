@@ -16,6 +16,19 @@ dropdb --if-exists ${PGDATABASE}-baseonly
 
 ADDONS=$(manifestoo --select-addons-dir ${ADDONS_DIR} --select-include "${INCLUDE}" --select-exclude "${EXCLUDE}" list --separator=,)
 
+if [ -n "${OCA_INSTALL_EXTRA_MODULES:-}" ]; then
+    if [ -n "$ADDONS" ]; then
+        ADDONS="${ADDONS},${OCA_INSTALL_EXTRA_MODULES}"
+    else
+        ADDONS="${OCA_INSTALL_EXTRA_MODULES}"
+    fi
+fi
+
+ODOO_INIT_EXTRA_ARGS=""
+if [ -n "${RUNBOAT_LOAD_LANG:-}" ]; then
+    ODOO_INIT_EXTRA_ARGS="${ODOO_INIT_EXTRA_ARGS} --load-language=${RUNBOAT_LOAD_LANG}"
+fi
+
 # In Odoo 19+, demo data is not loaded by default. We enable it via $ODOO_RC,
 # because --with-demo does not exists in previous version and would error out,
 # while unknown options in the configuration file are ignored.
@@ -36,4 +49,5 @@ unbuffer $(which odoo || which openerp-server) \
   --db-template=template1 \
   -d ${PGDATABASE} \
   -i ${ADDONS:-base} \
+  ${ODOO_INIT_EXTRA_ARGS} \
   --stop-after-init || dropdb --if-exists ${PGDATABASE} && exit 0
