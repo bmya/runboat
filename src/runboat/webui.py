@@ -29,6 +29,8 @@ FOOTER_HTML = """\
         ></a>.
     Copyright © Runboat
     <a href="https://github.com/sbidoul/runboat/graphs/contributors">contributors</a>.
+    Web Dashboard by
+    <a href="https://www.bmya.cl">Blanco Martón y Asociados SpA</a>
 </p>
 """
 
