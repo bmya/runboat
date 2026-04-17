@@ -22,6 +22,13 @@ curl -sSL "https://${GITHUB_TOKEN}@github.com/${RUNBOAT_GIT_REPO}/tarball/${RUNB
 # Cloned repos are placed in /mnt/data/extra-addons/<repo-name> and appended to ADDONS_PATH.
 if [ -n "${RUNBOAT_EXTRA_ADDONS_REPOS:-}" ]; then
     for REPO in $(echo "${RUNBOAT_EXTRA_ADDONS_REPOS}" | tr ',' ' '); do
+        # Skip if this extra-addons repo is the same one being tested — it's
+        # already cloned into $ADDONS_DIR and re-cloning would duplicate it
+        # in ADDONS_PATH and cause module-definition conflicts.
+        if [ "${REPO}" = "${RUNBOAT_GIT_REPO}" ]; then
+            echo "Skipping extra repo ${REPO}: same as repo under test."
+            continue
+        fi
         REPO_NAME=$(basename "${REPO}")
         EXTRA_DIR="/mnt/data/extra-addons/${REPO_NAME}"
         mkdir -p "${EXTRA_DIR}"
