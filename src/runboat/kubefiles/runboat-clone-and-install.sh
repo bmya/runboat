@@ -13,7 +13,7 @@ rm -fr $ADDONS_DIR
 # which exceeded the default pod memory limit.
 mkdir -p $ADDONS_DIR
 cd $ADDONS_DIR
-curl -sSL https://github.com/${RUNBOAT_GIT_REPO}/tarball/${RUNBOAT_GIT_REF} | tar zxf - --strip-components=1
+curl -sSL "https://${GITHUB_TOKEN}@github.com/${RUNBOAT_GIT_REPO}/tarball/${RUNBOAT_GIT_REF}" | tar zxf - --strip-components=1
 
 # Clone extra addons repos (e.g. bmya/odoo, bmya/enterprise, bmya/design-themes).
 # Repos are specified as a comma-separated list in RUNBOAT_EXTRA_ADDONS_REPOS.
