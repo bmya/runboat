@@ -28,21 +28,31 @@ curl -sSL "https://${GITHUB_TOKEN}@github.com/${RUNBOAT_GIT_REPO}/tarball/${RUNB
 EXTRA_ADDONS_SPECS=""
 if [ -f "${ADDONS_DIR}/aggregation.yml" ]; then
     echo "Using ${ADDONS_DIR}/aggregation.yml as source of truth for extra-addons."
+    # Minimal line-based parser (no PyYAML in the OCA CI image). Works with the
+    # canonical format we emit: each entry has `- url: ...` followed by `branch: "..."`.
     EXTRA_ADDONS_SPECS=$(python3 <<PYEOF
-import re, yaml
+import re
+cur_url = None
+default_branch = "${RUNBOAT_GIT_TARGET_BRANCH}"
 try:
-    data = yaml.safe_load(open("${ADDONS_DIR}/aggregation.yml")) or []
+    with open("${ADDONS_DIR}/aggregation.yml") as f:
+        lines = f.readlines()
 except Exception as e:
-    print(f"# aggregation.yml parse error: {e}", flush=True)
-    data = []
-for e in data:
-    if not isinstance(e, dict):
-        continue
-    url = str(e.get("url", "")).strip()
-    branch = e.get("branch") or "${RUNBOAT_GIT_TARGET_BRANCH}"
-    m = re.search(r"github\.com/([^/]+/[^/.]+?)(?:\.git)?/?\$", url)
+    print(f"# aggregation.yml read error: {e}", flush=True)
+    lines = []
+for line in lines:
+    m = re.match(r"^\s*-\s*url:\s*(.+?)\s*\$", line)
     if m:
-        print(f"{m.group(1)} {branch}")
+        cur_url = m.group(1).strip().strip('"').strip("'")
+        cur_branch = default_branch
+        continue
+    m = re.match(r"^\s+branch:\s*(.+?)\s*\$", line)
+    if m and cur_url:
+        cur_branch = m.group(1).strip().strip('"').strip("'")
+        gm = re.search(r"github\.com/([^/]+/[^/.]+?)(?:\.git)?/?\$", cur_url)
+        if gm:
+            print(f"{gm.group(1)} {cur_branch}")
+        cur_url = None
 PYEOF
 )
 elif [ -n "${RUNBOAT_EXTRA_ADDONS_REPOS:-}" ]; then
