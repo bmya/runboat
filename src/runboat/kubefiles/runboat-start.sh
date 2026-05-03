@@ -20,9 +20,17 @@ echo "admin_passwd=$(python3 -c 'import secrets; print(secrets.token_hex())')" >
 # Add extra addons repos (cloned during init) to ADDONS_PATH.
 # The init job exported ADDONS_PATH but that change is not persisted across pods,
 # so we reconstruct it here by scanning /mnt/data/extra-addons/.
+# Mirror the detection logic from runboat-clone-and-install.sh: prefer root,
+# fall back to <dir>/addons (Odoo CE/EE fork layout).
 if [ -d /mnt/data/extra-addons ]; then
     for dir in /mnt/data/extra-addons/*/; do
-        [ -d "$dir" ] && ADDONS_PATH="${ADDONS_PATH},${dir%/}"
+        [ -d "$dir" ] || continue
+        dir="${dir%/}"
+        if compgen -G "${dir}/*/__manifest__.py" > /dev/null; then
+            ADDONS_PATH="${ADDONS_PATH},${dir}"
+        elif compgen -G "${dir}/addons/*/__manifest__.py" > /dev/null; then
+            ADDONS_PATH="${ADDONS_PATH},${dir}/addons"
+        fi
     done
 fi
 

@@ -317,14 +317,16 @@ class Build(BaseModel):
             # Already marked as succeeded. We are probably here because the controller
             # is restarting, and is notified of existing initialization jobs.
             return
-        _logger.info(f"Initialization job succeded for {self}, ready to start.")
+        _logger.info(f"Initialization job succeded for {self}, auto-starting.")
         await self._deploy(
             self.commit_info,
             self.name,
             self.slug,
-            job_kind=k8s.DeploymentMode.stop,
+            job_kind=k8s.DeploymentMode.start,
         )
-        if await self._patch(init_status=BuildInitStatus.succeeded):
+        if await self._patch(
+            init_status=BuildInitStatus.succeeded, desired_replicas=1
+        ):
             await github.notify_status(
                 self.commit_info.repo,
                 self.commit_info.git_commit,
