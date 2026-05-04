@@ -53,6 +53,7 @@ configMapGenerator:
       - runboat-initialize.sh
       - runboat-cleanup.sh
       - runboat-start.sh
+      - runboat-test.sh
 
 generatorOptions:
   disableNameSuffixHash: true
