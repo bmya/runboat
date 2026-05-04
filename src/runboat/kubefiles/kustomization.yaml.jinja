@@ -10,6 +10,8 @@ resources:
   - initialize.yaml
   {%- elif mode == "cleanup" %}
   - cleanup.yaml
+  {%- elif mode == "test" %}
+  - test.yaml
   {%- endif %}
 
 namespace: {{ namespace }}
@@ -54,12 +56,16 @@ configMapGenerator:
       {%- for key, value in build_env.items() %}
       - {{ key }}={{ value }}
       {%- endfor %}
+      {%- if test_modules %}
+      - TEST_MODULES={{ test_modules }}
+      {%- endif %}
   - name: runboat-scripts
     files:
       - runboat-clone-and-install.sh
       - runboat-initialize.sh
       - runboat-cleanup.sh
       - runboat-start.sh
+      - runboat-test.sh
 
 generatorOptions:
   disableNameSuffixHash: true

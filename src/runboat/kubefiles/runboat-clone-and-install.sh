@@ -13,7 +13,11 @@ rm -fr $ADDONS_DIR
 # which exceeded the default pod memory limit.
 mkdir -p $ADDONS_DIR
 cd $ADDONS_DIR
-curl -sSL "https://${GITHUB_TOKEN}@github.com/${RUNBOAT_GIT_REPO}/tarball/${RUNBOAT_GIT_REF}" | tar zxf - --strip-components=1
+{ set +x; } 2>/dev/null
+curl -sSL -H "Authorization: token ${GITHUB_TOKEN}" \
+    "https://api.github.com/repos/${RUNBOAT_GIT_REPO}/tarball/${RUNBOAT_GIT_REF}" \
+    | tar zxf - --strip-components=1
+set -x
 
 # Clone extra addons repos as dependencies for the build.
 #
@@ -76,10 +80,21 @@ if [ -n "${EXTRA_ADDONS_SPECS}" ]; then
         EXTRA_DIR="/mnt/data/extra-addons/${REPO_NAME}"
         mkdir -p "${EXTRA_DIR}"
         echo "Cloning extra repo ${REPO}@${BRANCH} into ${EXTRA_DIR}"
-        curl -sSL "https://${GITHUB_TOKEN}@github.com/${REPO}/tarball/${BRANCH}" \
+        { set +x; } 2>/dev/null
+        curl -sSL -H "Authorization: token ${GITHUB_TOKEN}" \
+            "https://api.github.com/repos/${REPO}/tarball/${BRANCH}" \
             | tar zxf - --strip-components=1 -C "${EXTRA_DIR}" \
             || echo "Warning: could not clone ${REPO}@${BRANCH}, skipping."
-        export ADDONS_PATH="${ADDONS_PATH},${EXTRA_DIR}"
+        set -x
+        # Detect where the addons live: root, <dir>/addons (Odoo CE/EE fork
+        # layout), or skip if neither has __manifest__.py files.
+        if compgen -G "${EXTRA_DIR}/*/__manifest__.py" > /dev/null; then
+            export ADDONS_PATH="${ADDONS_PATH},${EXTRA_DIR}"
+        elif compgen -G "${EXTRA_DIR}/addons/*/__manifest__.py" > /dev/null; then
+            export ADDONS_PATH="${ADDONS_PATH},${EXTRA_DIR}/addons"
+        else
+            echo "Warning: no addons found in ${EXTRA_DIR}, skipping ADDONS_PATH entry."
+        fi
     done <<< "${EXTRA_ADDONS_SPECS}"
 fi
 

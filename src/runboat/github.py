@@ -64,6 +64,22 @@ class GitHubStatusState(str, Enum):
     success = "success"
 
 
+async def post_pr_comment(repo: str, pr: int | None, body: str) -> None:
+    if not pr:
+        return
+    try:
+        await _github_request(
+            "POST",
+            f"/repos/{repo}/issues/{pr}/comments",
+            json={"body": body},
+        )
+    except httpx.HTTPStatusError as e:
+        _logger.error(
+            f"Failed to post GitHub PR comment (code {e.response.status_code}):\n"
+            f"{e.response.text}"
+        )
+
+
 async def notify_status(
     repo: str, sha: str, state: GitHubStatusState, target_url: str | None
 ) -> None:

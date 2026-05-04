@@ -228,6 +228,29 @@ async def undeploy_build(name: str) -> None:
     await build.undeploy()
 
 
+class TestRequest(BaseModel):
+    modules: str  # comma-separated module names, "all", or "repo"
+
+
+@router.post("/builds/{name}/test", dependencies=[Depends(authenticated)])
+async def run_tests(name: str, body: TestRequest) -> None:
+    """Run tests on an initialized build. modules: comma-separated, 'all', or 'repo'."""
+    build = await _build_by_name(name)
+    try:
+        await build.run_tests(body.modules)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/builds/{name}/test-log", response_class=HTMLResponse)
+async def test_log(name: str) -> str:
+    build = await _build_by_name(name)
+    log = await build.test_log()
+    if not log:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No test log found.")
+    return Ansi2HTMLConverter().convert(log)
+
+
 class BuildEventSource:
     def __init__(
         self,
