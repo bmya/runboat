@@ -140,6 +140,7 @@ class DeploymentMode(str, Enum):
     cleanup = "cleanup"
     start = "start"
     stop = "stop"
+    test = "test"
 
 
 class DeploymentVars(BaseModel):
@@ -154,6 +155,7 @@ class DeploymentVars(BaseModel):
     build_env: dict[str, str]
     build_secret_env: dict[str, str]
     build_template_vars: dict[str, str]
+    test_modules: str = ""
 
 
 def make_deployment_vars(
@@ -162,6 +164,7 @@ def make_deployment_vars(
     slug: str,
     commit_info: CommitInfo,
     build_settings: BuildSettings,
+    test_modules: str = "",
 ) -> DeploymentVars:
     image_name, image_tag = _split_image_name_tag(build_settings.image)
     return DeploymentVars(
@@ -176,6 +179,7 @@ def make_deployment_vars(
         build_env=settings.build_env | build_settings.env,
         build_secret_env=settings.build_secret_env | build_settings.secret_env,
         build_template_vars=settings.build_template_vars | build_settings.template_vars,
+        test_modules=test_modules,
     )
 
 
@@ -262,7 +266,7 @@ async def delete_deployment_resources(build_name: str) -> None:
 @sync_to_async
 def kill_job(build_name: str, job_kind: DeploymentMode) -> None:
     # TODO delete all resources with runboat/build and runboat/job-kind label
-    assert job_kind in (DeploymentMode.initialize, DeploymentMode.cleanup)
+    assert job_kind in (DeploymentMode.initialize, DeploymentMode.cleanup, DeploymentMode.test)
     batchv1 = client.BatchV1Api()
     batchv1.delete_collection_namespaced_job(
         namespace=settings.build_namespace,

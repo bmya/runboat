@@ -51,3 +51,6 @@ unbuffer $(which odoo || which openerp-server) \
   -i ${ADDONS:-base} \
   ${ODOO_INIT_EXTRA_ARGS} \
   --stop-after-init || dropdb --if-exists ${PGDATABASE} && exit 0
+
+# Save installed modules list so runboat-test.sh can use mode "all".
+echo "${ADDONS:-base}" > /mnt/data/test-modules.txt

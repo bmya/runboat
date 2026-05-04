@@ -178,7 +178,12 @@ class Build(BaseModel):
 
     @classmethod
     async def _deploy(
-        cls, commit_info: CommitInfo, name: str, slug: str, job_kind: k8s.DeploymentMode
+        cls,
+        commit_info: CommitInfo,
+        name: str,
+        slug: str,
+        job_kind: k8s.DeploymentMode,
+        test_modules: str = "",
     ) -> None:
         """Internal method to prepare for and handle a k8s.deploy()."""
         build_settings = settings.get_build_settings(
@@ -193,6 +198,7 @@ class Build(BaseModel):
             slug,
             commit_info,
             build_settings,
+            test_modules=test_modules,
         )
         await k8s.deploy(kubefiles_path, deployment_vars)
 
@@ -298,6 +304,39 @@ class Build(BaseModel):
         _logger.info(f"Deploying cleanup job for {self}.")
         await self._deploy(
             self.commit_info, self.name, self.slug, job_kind=k8s.DeploymentMode.cleanup
+        )
+
+    async def run_tests(self, modules: str) -> None:
+        """Launch a test job for this build. modules: comma-separated, 'all', or 'repo'."""
+        if self.init_status != BuildInitStatus.succeeded:
+            raise ValueError(f"Cannot run tests: build not initialized ({self.init_status})")
+        await k8s.kill_job(self.name, k8s.DeploymentMode.test)  # cancel any previous test
+        await self._deploy(
+            self.commit_info, self.name, self.slug,
+            job_kind=k8s.DeploymentMode.test,
+            test_modules=modules,
+        )
+
+    async def test_log(self) -> str | None:
+        return await k8s.log(self.name, k8s.DeploymentMode.test)
+
+    async def on_test_started(self) -> None:
+        _logger.info(f"Test job started for {self}.")
+
+    async def on_test_succeeded(self) -> None:
+        _logger.info(f"Test job succeeded for {self}.")
+        await github.post_pr_comment(
+            self.commit_info.repo,
+            self.commit_info.pr,
+            f"✅ Tests pasaron. [Ver logs]({self.live_link}/test-log)",
+        )
+
+    async def on_test_failed(self) -> None:
+        _logger.info(f"Test job failed for {self}.")
+        await github.post_pr_comment(
+            self.commit_info.repo,
+            self.commit_info.pr,
+            f"❌ Tests fallaron. [Ver logs]({self.live_link}/test-log)",
         )
 
     async def on_initialize_started(self) -> None:

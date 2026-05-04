@@ -168,7 +168,7 @@ class Controller:
             if not build_name:
                 continue
             job_kind = job.metadata.labels.get("runboat/job-kind")
-            if job_kind not in ("initialize", "cleanup"):
+            if job_kind not in ("initialize", "cleanup", "test"):
                 continue
             if event_type in (None, "ADDED", "MODIFIED"):
                 # Look for build in local db and also in k8s api.
@@ -198,6 +198,13 @@ class Controller:
                         await build.on_cleanup_succeeded()
                     elif job.status.failed:
                         await build.on_cleanup_failed()
+                if job_kind == "test":
+                    if job.status.active:
+                        await build.on_test_started()
+                    elif job.status.succeeded:
+                        await build.on_test_succeeded()
+                    elif job.status.failed:
+                        await build.on_test_failed()
             elif event_type == "DELETED":
                 pass
 
