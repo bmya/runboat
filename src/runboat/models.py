@@ -379,12 +379,6 @@ class Build(BaseModel):
             # restarting, and is notified of existing initialization jobs.
             return
         _logger.info(f"Initialization job failed for {self}.")
-        await self._deploy(
-            self.commit_info,
-            self.name,
-            self.slug,
-            job_kind=k8s.DeploymentMode.stop,
-        )
         if await self._patch(init_status=BuildInitStatus.failed, desired_replicas=0):
             await github.notify_status(
                 self.commit_info.repo,

@@ -217,7 +217,7 @@ class BuildsDb:
                         *
                     FROM builds
                 )
-                WHERE status IN (?, ?, ?) AND (rownum != 1 OR pr IS NOT NULL)
+                WHERE status IN (?, ?, ?) AND rownum != 1
                 ORDER BY last_scaled
                 LIMIT ?
             """,
