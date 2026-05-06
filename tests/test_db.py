@@ -218,7 +218,19 @@ def test_oldest_stopped() -> None:
             created=datetime.datetime(2021, 10, 11, 12, 0, 2),
         )
     )
-    # a PR that is most recent than the latest branch build
+    # an older PR build (not most recent for its PR) — eligible for eviction
+    db.add(
+        _make_build(
+            name="pr1_old",
+            repo="oca/repo1",
+            target_branch="15.0",
+            pr=1,
+            status=BuildStatus.stopped,
+            last_scaled=datetime.datetime(2021, 10, 11, 12, 0, 3),
+            created=datetime.datetime(2021, 10, 11, 12, 0, 3),
+        )
+    )
+    # most recent build for the same PR — protected from eviction
     db.add(
         _make_build(
             name="pr1",
@@ -230,4 +242,4 @@ def test_oldest_stopped() -> None:
             created=datetime.datetime(2021, 10, 11, 12, 0, 4),
         )
     )
-    assert [b.name for b in db.oldest_stopped(limit=3)] == ["b1", "pr1"]
+    assert [b.name for b in db.oldest_stopped(limit=3)] == ["b1", "pr1_old"]
