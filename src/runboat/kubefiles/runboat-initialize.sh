@@ -42,15 +42,22 @@ unbuffer $(which odoo || which openerp-server) \
   -i base \
   --stop-after-init
 
-# Try to install all addons, but do not fail in case of error, to let the build start
-# so users can work with the 'baseonly' database.
-unbuffer $(which odoo || which openerp-server) \
-  --data-dir=/mnt/data/odoo-data-dir \
-  --db-template=template1 \
-  -d ${PGDATABASE} \
-  -i ${ADDONS:-base} \
-  ${ODOO_INIT_EXTRA_ARGS} \
-  --stop-after-init || dropdb --if-exists ${PGDATABASE} && exit 0
+# Install all addons in the main DB. If it fails, drop the DB and exit with error
+# so the build is reported as failed (visible in GitHub PR status checks).
+# The previous behaviour (exit 0 on failure to leave the build running on the
+# 'baseonly' DB) is no longer useful: the db-filter is anchored, so 'baseonly'
+# is filtered out anyway, leaving the user with nothing.
+if ! unbuffer $(which odoo || which openerp-server) \
+    --data-dir=/mnt/data/odoo-data-dir \
+    --db-template=template1 \
+    -d ${PGDATABASE} \
+    -i ${ADDONS:-base} \
+    ${ODOO_INIT_EXTRA_ARGS} \
+    --stop-after-init; then
+    echo "[runboat-init] Module installation FAILED; dropping main DB."
+    dropdb --if-exists ${PGDATABASE}
+    exit 1
+fi
 
 # Save installed modules list so runboat-test.sh can use mode "all".
 echo "${ADDONS:-base}" > /mnt/data/test-modules.txt

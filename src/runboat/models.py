@@ -390,7 +390,7 @@ class Build(BaseModel):
                 self.commit_info.repo,
                 self.commit_info.git_commit,
                 GitHubStatusState.failure,
-                target_url=self.live_link,
+                target_url=self.webui_link,
             )
 
     async def on_cleanup_started(self) -> None:
