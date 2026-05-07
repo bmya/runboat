@@ -322,21 +322,42 @@ class Build(BaseModel):
 
     async def on_test_started(self) -> None:
         _logger.info(f"Test job started for {self}.")
+        await github.notify_status(
+            self.commit_info.repo,
+            self.commit_info.git_commit,
+            GitHubStatusState.pending,
+            target_url=self.webui_link,
+            context="runboat/test",
+        )
 
     async def on_test_succeeded(self) -> None:
         _logger.info(f"Test job succeeded for {self}.")
+        await github.notify_status(
+            self.commit_info.repo,
+            self.commit_info.git_commit,
+            GitHubStatusState.success,
+            target_url=self.webui_link,
+            context="runboat/test",
+        )
         await github.post_pr_comment(
             self.commit_info.repo,
             self.commit_info.pr,
-            f"✅ Tests pasaron. [Ver logs]({self.live_link}/test-log)",
+            f"✅ Tests pasaron. [Ver logs]({self.webui_link}/test-log)",
         )
 
     async def on_test_failed(self) -> None:
         _logger.info(f"Test job failed for {self}.")
+        await github.notify_status(
+            self.commit_info.repo,
+            self.commit_info.git_commit,
+            GitHubStatusState.failure,
+            target_url=self.webui_link,
+            context="runboat/test",
+        )
         await github.post_pr_comment(
             self.commit_info.repo,
             self.commit_info.pr,
-            f"❌ Tests fallaron. [Ver logs]({self.live_link}/test-log)",
+            f"❌ Tests fallaron. [Ver logs]({self.webui_link}/test-log)",
         )
 
     async def on_initialize_started(self) -> None:
@@ -370,7 +391,7 @@ class Build(BaseModel):
                 self.commit_info.repo,
                 self.commit_info.git_commit,
                 GitHubStatusState.success,
-                target_url=self.live_link,
+                target_url=self.webui_link,
             )
 
     async def on_initialize_failed(self) -> None:

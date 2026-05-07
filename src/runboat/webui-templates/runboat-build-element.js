@@ -66,10 +66,10 @@ class RunboatBuildElement extends LitElement {
             <p>
                 ${this.build.status || "undeployed"}
                 ${this.build.status?
-                    html`⦙ 🗒 <a href="/api/v1/builds/${this.build.name}/init-log">init log</a>`:""
+                    html`⦙ 🗒 <a href="/webui/log-viewer.html?name=${this.build.name}&kind=init">init log</a>`:""
                 }
                 ${this.build.status == "started"?
-                    html`⦙ 🗒 <a href="/api/v1/builds/${this.build.name}/log">log</a>`:""
+                    html`⦙ 🗒 <a href="/webui/log-viewer.html?name=${this.build.name}&kind=runtime">log</a>`:""
                 }
                 ${this.build.status == "started"?
                    html`⦙ 🚪 <a href="${this.build.deploy_link}" title="Odoo">live</a> <a href="${this.build.deploy_link_mailhog}" title="Mailhog">✉</a>`:""
