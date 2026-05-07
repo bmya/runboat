@@ -81,7 +81,8 @@ async def post_pr_comment(repo: str, pr: int | None, body: str) -> None:
 
 
 async def notify_status(
-    repo: str, sha: str, state: GitHubStatusState, target_url: str | None
+    repo: str, sha: str, state: GitHubStatusState, target_url: str | None,
+    context: str = "runboat/build",
 ) -> None:
     if settings.disable_commit_statuses:
         return
@@ -93,7 +94,7 @@ async def notify_status(
             json={
                 "state": state,
                 "target_url": target_url,
-                "context": "runboat/build",
+                "context": context,
             },
         )
     except httpx.HTTPStatusError as e:
