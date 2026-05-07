@@ -247,6 +247,12 @@ function renderBuild(b) {
                                        ${!isStarted ? 'tabindex="-1" aria-disabled="true"' : ''}>
                                     <i class="fa fa-file-text-o"></i>Log
                                 </a></li>
+                                <li><a class="dropdown-item ${!isStarted ? 'disabled' : ''}"
+                                       target="_blank"
+                                       href="${isStarted ? `/webui/log-viewer.html?name=${encodeURIComponent(b.name)}&kind=test` : '#'}"
+                                       ${!isStarted ? 'tabindex="-1" aria-disabled="true"' : ''}>
+                                    <i class="fa fa-flask"></i>Test log
+                                </a></li>
                                 <li><hr class="dropdown-divider"></li>
                                 <li><a class="dropdown-item ${!isStarted ? 'disabled' : ''}"
                                        target="_blank"

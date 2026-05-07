@@ -342,7 +342,7 @@ class Build(BaseModel):
         await github.post_pr_comment(
             self.commit_info.repo,
             self.commit_info.pr,
-            f"✅ Tests pasaron. [Ver logs]({self.webui_link}/test-log)",
+            f"✅ Tests pasaron. [Ver logs]({settings.base_url}/webui/log-viewer.html?name={self.name}&kind=test)",
         )
 
     async def on_test_failed(self) -> None:
@@ -357,7 +357,7 @@ class Build(BaseModel):
         await github.post_pr_comment(
             self.commit_info.repo,
             self.commit_info.pr,
-            f"❌ Tests fallaron. [Ver logs]({self.webui_link}/test-log)",
+            f"❌ Tests fallaron. [Ver logs]({settings.base_url}/webui/log-viewer.html?name={self.name}&kind=test)",
         )
 
     async def on_initialize_started(self) -> None:
