@@ -62,6 +62,7 @@ class BuildsDb:
             "    desired_replicas INTEGER NOT NULL,"
             "    status TEXT NOT NULL, "
             "    init_status TEXT NOT NULL, "
+            "    test_status TEXT, "
             "    last_scaled TEXT NOT NULL, "
             "    created TEXT NOT NULL"
             ")"
@@ -120,10 +121,11 @@ class BuildsDb:
                 "    desired_replicas,"
                 "    status,"
                 "    init_status, "
+                "    test_status, "
                 "    last_scaled, "
                 "    created"
                 ") "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     build.name,
                     build.deployment_name,
@@ -134,6 +136,7 @@ class BuildsDb:
                     build.desired_replicas,
                     build.status,
                     build.init_status,
+                    build.test_status,
                     build.last_scaled.isoformat(),
                     build.created.isoformat(),
                 ),
