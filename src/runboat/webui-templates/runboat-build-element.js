@@ -72,6 +72,9 @@ class RunboatBuildElement extends LitElement {
                     html`⦙ 🗒 <a href="/webui/log-viewer.html?name=${this.build.name}&kind=runtime">log</a>`:""
                 }
                 ${this.build.status == "started"?
+                    html`⦙ 🧪 <a href="/webui/log-viewer.html?name=${this.build.name}&kind=test">test log</a>`:""
+                }
+                ${this.build.status == "started"?
                    html`⦙ 🚪 <a href="${this.build.deploy_link}" title="Odoo">live</a> <a href="${this.build.deploy_link_mailhog}" title="Mailhog">✉</a>`:""
                 }
             </p>

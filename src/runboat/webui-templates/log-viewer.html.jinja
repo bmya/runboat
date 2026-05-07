@@ -37,8 +37,8 @@
 <script>
 const params = new URLSearchParams(location.search);
 const name = params.get('name');
-const kind = params.get('kind') || 'init';   // 'init' | 'runtime'
-const path = kind === 'runtime' ? 'log' : 'init-log';
+const kind = params.get('kind') || 'init';   // 'init' | 'runtime' | 'test'
+const path = kind === 'runtime' ? 'log' : kind === 'test' ? 'test-log' : 'init-log';
 const url = `/api/v1/builds/${encodeURIComponent(name)}/${path}`;
 const POLL_MS = 2000;
 const MAX_DURATION_MS = 30 * 60 * 1000;
