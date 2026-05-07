@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Runboat — log viewer</title>
+  <style>
+    body { margin: 0; font-family: ui-monospace, Menlo, Consolas, monospace; background: #1e1e1e; color: #ddd; }
+    #toolbar {
+      position: sticky; top: 0; z-index: 10;
+      background: #2d2d2d; padding: 6px 12px; border-bottom: 1px solid #444;
+      display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    }
+    #toolbar #title { font-weight: bold; }
+    #toolbar #title small { font-weight: normal; opacity: 0.7; }
+    #log { padding: 12px; white-space: pre-wrap; word-break: break-all; font-size: 13px; }
+    .pill { padding: 2px 8px; border-radius: 10px; font-size: 0.85em; }
+    .pill-ok { background: #2a4a2a; color: #9f9; }
+    .pill-err { background: #4a2a2a; color: #f99; }
+    .pill-info { background: #2a3a4a; color: #9bf; }
+    button {
+      background: #444; color: #ddd; border: 1px solid #666;
+      padding: 4px 10px; cursor: pointer; border-radius: 3px;
+      font: inherit;
+    }
+    button:hover { background: #555; }
+    button.active { background: #2a4a2a; border-color: #4a8a4a; }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <span id="title"></span>
+    <span class="pill pill-info" id="status">⏳ cargando…</span>
+    <button id="follow-btn" class="active" title="Auto-scroll al final cuando llega contenido nuevo">↓ follow</button>
+    <button id="stop-btn" title="Detener auto-update">⏸ stop</button>
+  </div>
+  <pre id="log"></pre>
+<script>
+const params = new URLSearchParams(location.search);
+const name = params.get('name');
+const kind = params.get('kind') || 'init';   // 'init' | 'runtime'
+const path = kind === 'runtime' ? 'log' : 'init-log';
+const url = `/api/v1/builds/${encodeURIComponent(name)}/${path}`;
+const POLL_MS = 2000;
+const MAX_DURATION_MS = 30 * 60 * 1000;
+const start = Date.now();
+
+document.title = `${name} — ${kind} log`;
+document.getElementById('title').innerHTML = `${name} <small>— ${kind} log</small>`;
+
+const logEl = document.getElementById('log');
+const statusEl = document.getElementById('status');
+const followBtn = document.getElementById('follow-btn');
+const stopBtn = document.getElementById('stop-btn');
+
+let follow = true;
+let stopped = false;
+let lastHtml = '';
+let userScrolling = false;
+
+followBtn.addEventListener('click', () => {
+    follow = !follow;
+    followBtn.classList.toggle('active', follow);
+    if (follow) window.scrollTo(0, document.body.scrollHeight);
+});
+stopBtn.addEventListener('click', () => {
+    stopped = true;
+    setStatus('⏸ detenido', 'info');
+});
+
+window.addEventListener('scroll', () => {
+    const atBottom = (window.innerHeight + window.scrollY) >= (document.body.offsetHeight - 50);
+    if (!atBottom && follow) {
+        follow = false;
+        followBtn.classList.remove('active');
+    }
+});
+
+function setStatus(text, kind) {
+    statusEl.textContent = text;
+    statusEl.className = 'pill pill-' + (kind || 'ok');
+}
+
+async function poll() {
+    if (stopped) return;
+    if (Date.now() - start > MAX_DURATION_MS) {
+        setStatus('⏸ detenido (timeout 30min)', 'info');
+        return;
+    }
+    try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (res.status === 404) {
+            setStatus('⏳ esperando log…', 'info');
+        } else if (!res.ok) {
+            setStatus(`✗ HTTP ${res.status}`, 'err');
+        } else {
+            const html = await res.text();
+            if (html !== lastHtml) {
+                logEl.innerHTML = html;
+                lastHtml = html;
+                if (follow) window.scrollTo(0, document.body.scrollHeight);
+            }
+            setStatus(`✓ ${new Date().toLocaleTimeString()}`, 'ok');
+        }
+    } catch (e) {
+        setStatus(`✗ ${e.message}`, 'err');
+    }
+    setTimeout(poll, POLL_MS);
+}
+
+if (!name) {
+    setStatus('✗ falta query param ?name=...', 'err');
+} else {
+    poll();
+}
+</script>
+</body>
+</html>

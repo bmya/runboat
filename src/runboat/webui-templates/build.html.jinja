@@ -238,12 +238,12 @@ function renderBuild(b) {
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <li><a class="dropdown-item" target="_blank"
-                                       href="/api/v1/builds/${b.name}/init-log">
+                                       href="/webui/log-viewer.html?name=${encodeURIComponent(b.name)}&kind=init">
                                     <i class="fa fa-list-alt"></i>Init log
                                 </a></li>
                                 <li><a class="dropdown-item ${!isStarted ? 'disabled' : ''}"
                                        target="_blank"
-                                       href="${isStarted ? `/api/v1/builds/${b.name}/log` : '#'}"
+                                       href="${isStarted ? `/webui/log-viewer.html?name=${encodeURIComponent(b.name)}&kind=runtime` : '#'}"
                                        ${!isStarted ? 'tabindex="-1" aria-disabled="true"' : ''}>
                                     <i class="fa fa-file-text-o"></i>Log
                                 </a></li>
