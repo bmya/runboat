@@ -37,11 +37,18 @@ fi
 
 echo "Running tests for modules: ${TEST_MODULES:-base}"
 
+# Convert "mod1,mod2" → "/mod1,/mod2" for --test-tags.
+# --test-tags /module runs all tests in the module without requiring an upgrade,
+# which is correct when the DB is already initialized (the build DB is ready).
+TEST_TAGS=$(echo "${TEST_MODULES:-base}" | tr ',' '\n' | sed 's|^|/|' | paste -sd ',')
+
+echo "Test tags: ${TEST_TAGS}"
+
 unbuffer $(which odoo || which openerp-server) \
   --data-dir=/mnt/data/odoo-data-dir \
   --db-filter=^${PGDATABASE}$ \
   -d ${PGDATABASE} \
-  -u ${TEST_MODULES:-base} \
   --test-enable \
+  --test-tags "${TEST_TAGS}" \
   --stop-after-init \
   --log-level=test
