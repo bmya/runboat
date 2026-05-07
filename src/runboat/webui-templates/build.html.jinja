@@ -143,7 +143,9 @@ function timeAgo(isoStr) {
 }
 
 function worstStatus(builds) {
+    if (builds.some(b => b.test_status === 'failed')) return 'failed';
     if (builds.some(b => b.status === 'failed')) return 'failed';
+    if (builds.some(b => b.test_status === 'running')) return 'pending';
     if (builds.some(b => PENDING_STATUSES.has(b.status))) return 'pending';
     if (builds.some(b => b.status === 'started')) return 'ok';
     return 'stopped';
@@ -211,7 +213,7 @@ function renderBuild(b) {
                             <a href="${b.webui_link}" title="${b.commit_info.repo}">${repoShort(b.commit_info.repo)}</a>
                         </span>
                     </div>
-                    <div class="slot-sub">${b.status.replace('_', ' ')}</div>
+                    <div class="slot-sub">${b.status.replace('_', ' ')}${b.test_status ? ` ⦙ tests: ${b.test_status}` : ''}</div>
                     <div class="slot-actions">
                         <button class="slot-btn btn-open" title="Abrir Odoo"
                                 ${!isStarted ? 'disabled' : ''}

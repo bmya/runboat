@@ -350,7 +350,9 @@ function branchSortKey(name) {
 const PENDING_STATUSES = new Set(['initializing','starting','stopping','to_initialize']);
 
 function worstStatus(buildList) {
+    if (buildList.some(b => b.test_status === 'failed'))            return 'failed';
     if (buildList.some(b => b.status === 'failed'))                 return 'failed';
+    if (buildList.some(b => b.test_status === 'running'))           return 'pending';
     if (buildList.some(b => PENDING_STATUSES.has(b.status)))        return 'pending';
     if (buildList.some(b => b.status === 'started'))                return 'ok';
     return 'stopped';
