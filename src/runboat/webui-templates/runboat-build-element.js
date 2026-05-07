@@ -36,6 +36,15 @@ class RunboatBuildElement extends LitElement {
         .build-status-failed {
             background-color: lightcoral;
         }
+        .build-test-running {
+            background-color: lightyellow;
+        }
+        .build-test-failed {
+            background-color: lightcoral;
+        }
+        .build-test-succeeded {
+            background-color: palegreen;
+        }
         time-ago {
             color: gray;
             white-space: nowrap;
@@ -50,8 +59,10 @@ class RunboatBuildElement extends LitElement {
         if (!this.build.name) {
             return html`<div class="build-card"><p>Build not found...</p></div>`;
         }
+        const ts = this.build.test_status;
+        const cardClass = ts ? `build-test-${ts}` : `build-status-${this.build.status}`;
         return html`
-        <div class="build-card build-status-${this.build.status}">
+        <div class="build-card ${cardClass}">
             <p class="build-name">${this.build.name}</p>
             <p>
                 <a href="${this.build.repo_target_branch_link}">${this.build.commit_info?.repo} ${this.build.commit_info?.target_branch}</a>
@@ -78,6 +89,14 @@ class RunboatBuildElement extends LitElement {
                    html`⦙ 🚪 <a href="${this.build.deploy_link}" title="Odoo">live</a> <a href="${this.build.deploy_link_mailhog}" title="Mailhog">✉</a>`:""
                 }
             </p>
+            ${this.build.test_status?
+                html`<p>
+                    ${{running:"⏳ tests en curso", succeeded:"✅ tests OK", failed:"❌ tests fallaron"}[this.build.test_status] || ""}
+                    ${this.build.test_status?
+                        html`⦙ <a href="/webui/log-viewer.html?name=${this.build.name}&kind=test">ver log</a>`:""
+                    }
+                </p>`:""
+            }
             <p>
                 <button @click="${this.startHandler}" ?disabled="${this.build.status != "stopped" || this.build.status == RunboatBuildElement.clickedStatus}">start</button>
                 <button @click="${this.stopHandler}" ?disabled="${this.build.status != "started" || this.build.status == RunboatBuildElement.clickedStatus}">stop</button>

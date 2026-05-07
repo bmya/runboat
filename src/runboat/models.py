@@ -45,6 +45,7 @@ class Build(BaseModel):
     commit_info: CommitInfo
     status: BuildStatus
     init_status: BuildInitStatus
+    test_status: str | None = None  # "running" | "succeeded" | "failed" | None
     desired_replicas: int
     last_scaled: datetime.datetime
     created: datetime.datetime
@@ -61,6 +62,7 @@ class Build(BaseModel):
         return (
             self.status == other.status
             and self.init_status == other.init_status
+            and self.test_status == other.test_status
             and self.desired_replicas == other.desired_replicas
             and self.last_scaled == other.last_scaled
         )
@@ -85,6 +87,7 @@ class Build(BaseModel):
                 git_commit=deployment.metadata.annotations["runboat/git-commit"],
             ),
             init_status=deployment.metadata.annotations["runboat/init-status"],
+            test_status=deployment.metadata.annotations.get("runboat/test-status") or None,
             status=cls._status_from_deployment(deployment),
             desired_replicas=deployment.spec.replicas or 0,
             last_scaled=deployment.metadata.annotations.get("runboat/last-scaled")
@@ -322,6 +325,7 @@ class Build(BaseModel):
 
     async def on_test_started(self) -> None:
         _logger.info(f"Test job started for {self}.")
+        await self._patch(test_status="running")
         await github.notify_status(
             self.commit_info.repo,
             self.commit_info.git_commit,
@@ -332,6 +336,7 @@ class Build(BaseModel):
 
     async def on_test_succeeded(self) -> None:
         _logger.info(f"Test job succeeded for {self}.")
+        await self._patch(test_status="succeeded")
         await github.notify_status(
             self.commit_info.repo,
             self.commit_info.git_commit,
@@ -347,6 +352,7 @@ class Build(BaseModel):
 
     async def on_test_failed(self) -> None:
         _logger.info(f"Test job failed for {self}.")
+        await self._patch(test_status="failed")
         await github.notify_status(
             self.commit_info.repo,
             self.commit_info.git_commit,
@@ -421,11 +427,20 @@ class Build(BaseModel):
     async def _patch(
         self,
         init_status: BuildInitStatus | None = None,
+        test_status: str | None = None,
         desired_replicas: int | None = None,
         remove_finalizers: bool = False,
         not_found_ok: bool = False,
     ) -> bool:
         ops: list[k8s.PatchOperation] = []
+        if test_status is not None and test_status != self.test_status:
+            ops.append(
+                {
+                    "op": "add",
+                    "path": "/metadata/annotations/runboat~1test-status",
+                    "value": test_status,
+                }
+            )
         if init_status is not None and init_status != self.init_status:
             ops.extend(
                 [
