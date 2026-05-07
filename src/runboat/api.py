@@ -53,6 +53,7 @@ class Build(BaseModel):
     repo_commit_link: str
     webui_link: str
     status: models.BuildStatus
+    test_status: str | None = None
     created: datetime.datetime
     last_scaled: datetime.datetime
 
