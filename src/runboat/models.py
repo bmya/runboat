@@ -256,6 +256,30 @@ class Build(BaseModel):
         # to remove the deployment.
         await k8s.delete_deployment(self.deployment_name)
 
+    async def abort(self) -> None:
+        """Cancel an in-progress build: kill init job and seal as failed.
+
+        Used when a newer commit on the same PR supersedes this build.
+        The build stays visible in red — never re-initialized automatically.
+        """
+        if self.status not in (
+            BuildStatus.initializing,
+            BuildStatus.starting,
+            BuildStatus.started,
+        ):
+            return
+        _logger.info(f"Aborting {self} (superseded by newer commit on same PR).")
+        await k8s.kill_job(self.name, job_kind=k8s.DeploymentMode.initialize)
+        await self._patch(
+            init_status=BuildInitStatus.failed, desired_replicas=0
+        )
+        await github.notify_status(
+            self.commit_info.repo,
+            self.commit_info.git_commit,
+            GitHubStatusState.failure,
+            target_url=self.webui_link,
+        )
+
     async def redeploy(self) -> None:
         """Redeploy a build, to reinitialize it."""
         _logger.info(f"Redeploying {self}.")
@@ -367,7 +391,10 @@ class Build(BaseModel):
         )
 
     async def on_initialize_started(self) -> None:
-        if self.init_status == BuildInitStatus.started:
+        if self.init_status in (BuildInitStatus.started, BuildInitStatus.failed):
+            # Already in steady state. The 'failed' guard prevents a late job
+            # event from resurrecting a build sealed by abort() or by a real
+            # init failure.
             return
         _logger.info(f"Initialization job started for {self}.")
         if await self._patch(init_status=BuildInitStatus.started, desired_replicas=0):

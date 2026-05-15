@@ -53,13 +53,21 @@ async def receive_payload(
             )
             return
         if payload["action"] in ("opened", "synchronize"):
+            pr_number = payload["pull_request"]["number"]
+            new_sha = payload["pull_request"]["head"]["sha"]
+            background_tasks.add_task(
+                controller.seal_old_pr_builds,
+                repo=repo,
+                pr=pr_number,
+                keep_git_commit=new_sha,
+            )
             background_tasks.add_task(
                 controller.deploy_commit,
                 CommitInfo(
                     repo=repo,
                     target_branch=target_branch,
-                    pr=payload["pull_request"]["number"],
-                    git_commit=payload["pull_request"]["head"]["sha"],
+                    pr=pr_number,
+                    git_commit=new_sha,
                 ),
             )
         elif payload["action"] in ("closed",):
