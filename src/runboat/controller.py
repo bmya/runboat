@@ -119,6 +119,19 @@ class Controller:
         ):
             await build.undeploy()
 
+    async def seal_old_pr_builds(
+        self, repo: str, pr: int, keep_git_commit: str
+    ) -> None:
+        """Abort in-progress builds for the same PR with a different SHA.
+
+        Called when a new HEAD arrives on a PR (force-push or new commit).
+        Already-failed/stopped builds are left untouched — they remain visible.
+        """
+        for build in self.db.search(repo=repo, pr=pr):
+            if build.commit_info.git_commit == keep_git_commit:
+                continue
+            await build.abort()
+
     async def get_build(self, build_name: str, db_only: bool = True) -> Build | None:
         build = self.db.get(build_name)
         if build is not None:
