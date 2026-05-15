@@ -257,16 +257,14 @@ class Build(BaseModel):
         await k8s.delete_deployment(self.deployment_name)
 
     async def abort(self) -> None:
-        """Cancel an in-progress build: kill init job and seal as failed.
+        """Cancel an in-progress init: kill its job and seal the build as failed.
 
-        Used when a newer commit on the same PR supersedes this build.
-        The build stays visible in red — never re-initialized automatically.
+        Used when a newer commit on the same PR supersedes this build. Only
+        targets builds whose init is still running — already-running (`started`)
+        historicals are left alone (the stopper task will scale them down
+        naturally) so the PR history stays intact.
         """
-        if self.status not in (
-            BuildStatus.initializing,
-            BuildStatus.starting,
-            BuildStatus.started,
-        ):
+        if self.status != BuildStatus.initializing:
             return
         _logger.info(f"Aborting {self} (superseded by newer commit on same PR).")
         await k8s.kill_job(self.name, job_kind=k8s.DeploymentMode.initialize)
