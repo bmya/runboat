@@ -29,6 +29,14 @@ echo "addons_path=${ADDONS_PATH},${ADDONS_DIR}" >> $ODOO_RC
 
 oca_wait_for_postgres
 
+# Force admin (id=2) to en_US so tests with hardcoded English assertions
+# don't fail against es_419 translations loaded during init. The DB still
+# has es_419 available; preview users can switch lang in the UI.
+# Opt-out by setting RUNBOAT_TESTS_FORCE_EN_US=0.
+if [ "${RUNBOAT_TESTS_FORCE_EN_US:-1}" = "1" ]; then
+    psql -d "${PGDATABASE}" -c "UPDATE res_users SET lang='en_US' WHERE id=2;" > /dev/null
+fi
+
 if [ "${TEST_MODULES:-}" = "all" ]; then
     TEST_MODULES=$(cat /mnt/data/test-modules.txt 2>/dev/null || echo "base")
 elif [ "${TEST_MODULES:-}" = "repo" ]; then
