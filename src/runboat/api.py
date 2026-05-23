@@ -85,9 +85,18 @@ async def pr_info(repo: str, pr: int) -> PrInfo:
     return PrInfo(head_ref=data["head"]["ref"], title=data["title"])
 
 
-@router.get("/configured-repos", response_model=list[str])
-async def configured_repos() -> list[str]:
-    """Return all unique repo names extracted from RUNBOAT_REPOS patterns."""
+class ConfiguredRepo(BaseModel):
+    name: str            # "bmya/odoo-bmya"
+    category: str        # "bmya" | "oca" | "cliente"
+
+
+@router.get("/configured-repos", response_model=list[ConfiguredRepo])
+async def configured_repos() -> list[ConfiguredRepo]:
+    """Return all unique repo names + category extracted from RUNBOAT_REPOS.
+
+    Category is looked up in settings.repo_categories by the short repo name
+    (the part after the org). Repos absent from that map default to "bmya".
+    """
     import re as _re
     repos: set[str] = set()
     for repo_settings in settings.repos:
@@ -100,7 +109,14 @@ async def configured_repos() -> list[str]:
                 repos.add(f"{org}/{name}")
         else:
             repos.add(pattern)
-    return sorted(repos)
+    categories = settings.repo_categories
+    return [
+        ConfiguredRepo(
+            name=full,
+            category=categories.get(full.split("/", 1)[-1], "bmya"),
+        )
+        for full in sorted(repos)
+    ]
 
 
 @router.get("/status", response_model=Status)

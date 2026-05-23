@@ -76,6 +76,33 @@
             color: #adb5bd;
             padding: 0.5rem 0.85rem 0.25rem;
         }
+        /* ── Collapsible sidebar sections ── */
+        .sidebar-section { margin-bottom: 0.3rem; }
+        .sidebar-section-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            border: none;
+            background: none;
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #adb5bd;
+            padding: 0.5rem 0.85rem 0.25rem;
+            cursor: pointer;
+        }
+        .sidebar-section-toggle:hover { color: #6c757d; }
+        .sidebar-section-toggle .caret {
+            transition: transform 0.15s;
+            font-size: 0.7rem;
+        }
+        .sidebar-section.collapsed .sidebar-section-toggle .caret {
+            transform: rotate(-90deg);
+        }
+        .sidebar-section.collapsed .sidebar-section-body { display: none; }
+        .sidebar-section.empty { display: none; }
         .sidebar-item {
             display: flex;
             align-items: center;
@@ -296,11 +323,30 @@
 
     <!-- Sidebar -->
     <nav id="sidebar">
-        <div class="sidebar-heading">Repositorios</div>
-        <div id="repo-list"></div>
-
-        <div class="sidebar-heading" style="margin-top:0.5rem">Ramas</div>
-        <div id="branch-list"></div>
+        <div class="sidebar-section" data-section="bmya">
+            <button class="sidebar-section-toggle" type="button" data-toggle="bmya">
+                <span>BMYA</span><i class="fa fa-caret-down caret"></i>
+            </button>
+            <div class="sidebar-section-body"><div id="repos-bmya"></div></div>
+        </div>
+        <div class="sidebar-section" data-section="oca">
+            <button class="sidebar-section-toggle" type="button" data-toggle="oca">
+                <span>OCA</span><i class="fa fa-caret-down caret"></i>
+            </button>
+            <div class="sidebar-section-body"><div id="repos-oca"></div></div>
+        </div>
+        <div class="sidebar-section" data-section="cliente">
+            <button class="sidebar-section-toggle" type="button" data-toggle="cliente">
+                <span>Clientes</span><i class="fa fa-caret-down caret"></i>
+            </button>
+            <div class="sidebar-section-body"><div id="repos-cliente"></div></div>
+        </div>
+        <div class="sidebar-section" data-section="branches">
+            <button class="sidebar-section-toggle" type="button" data-toggle="branches">
+                <span>Ramas</span><i class="fa fa-caret-down caret"></i>
+            </button>
+            <div class="sidebar-section-body"><div id="branch-list"></div></div>
+        </div>
     </nav>
 
     <!-- Main -->
@@ -319,10 +365,18 @@
 // ── Estado global ─────────────────────────────────────────────────────────────
 const builds     = {};       // name → build
 const prCache    = {};       // "repo#pr" → {head_ref, title} | "loading" | "error"
-let configuredRepos = [];    // all repos from RUNBOAT_REPOS config
+let configuredRepos = [];    // [{name, category}] from /api/v1/configured-repos
+let repoCategoryMap = {};    // { "bmya/odoo-bmya": "bmya", ... }
 let activeBranch = null;     // null = todas
 let activeRepo   = null;     // null = todos los repos
 let searchTerm   = '';
+
+// Persisted collapsed sidebar sections
+const collapsedSections = new Set(
+    JSON.parse(localStorage.getItem('runboat.sidebar.collapsed') || '[]')
+);
+const CATEGORIES = ['bmya', 'oca', 'cliente'];
+function categoryOf(repo) { return repoCategoryMap[repo] || 'bmya'; }
 
 // ── Utilidades ────────────────────────────────────────────────────────────────
 
@@ -492,30 +546,41 @@ function render() {
         branchSortKey(a).localeCompare(branchSortKey(b))
     );
 
-    // ── Sidebar: repos ──
-    const repoList = document.getElementById('repo-list');
-    repoList.innerHTML = '';
-    const allRepoNames = new Set([...configuredRepos, ...allRepos]);
+    // ── Sidebar: repos (grouped by category) ──
+    const configuredNames = configuredRepos.map(r => r.name);
+    const allRepoNames = new Set([...configuredNames, ...allRepos]);
+    const buckets = { bmya: [], oca: [], cliente: [] };
     for (const repo of [...allRepoNames].sort()) {
-        const item = document.createElement('div');
-        item.style.cssText = 'display:flex;align-items:center';
-        const btn = document.createElement('button');
-        btn.className = 'sidebar-item' + (activeRepo === repo ? ' active' : '');
-        btn.style.flex = '1';
-        btn.textContent = repoShort(repo);
-        btn.addEventListener('click', () => {
-            activeRepo = (activeRepo === repo) ? null : repo;
-            render();
-        });
-        const ghLink = document.createElement('a');
-        ghLink.href = `https://github.com/${repo}`;
-        ghLink.target = '_blank';
-        ghLink.title = 'Ver en GitHub';
-        ghLink.style.cssText = 'padding:0.32rem 0.5rem 0.32rem 0;color:#adb5bd;font-size:0.72rem';
-        ghLink.innerHTML = '<i class="fa fa-external-link"></i>';
-        item.appendChild(btn);
-        item.appendChild(ghLink);
-        repoList.appendChild(item);
+        const cat = categoryOf(repo);
+        (buckets[cat] || buckets.bmya).push(repo);
+    }
+    for (const cat of CATEGORIES) {
+        const container = document.getElementById('repos-' + cat);
+        const section   = document.querySelector(`.sidebar-section[data-section="${cat}"]`);
+        container.innerHTML = '';
+        const repos = buckets[cat];
+        section.classList.toggle('empty', repos.length === 0);
+        for (const repo of repos) {
+            const item = document.createElement('div');
+            item.style.cssText = 'display:flex;align-items:center';
+            const btn = document.createElement('button');
+            btn.className = 'sidebar-item' + (activeRepo === repo ? ' active' : '');
+            btn.style.flex = '1';
+            btn.textContent = repoShort(repo);
+            btn.addEventListener('click', () => {
+                activeRepo = (activeRepo === repo) ? null : repo;
+                render();
+            });
+            const ghLink = document.createElement('a');
+            ghLink.href = `https://github.com/${repo}`;
+            ghLink.target = '_blank';
+            ghLink.title = 'Ver en GitHub';
+            ghLink.style.cssText = 'padding:0.32rem 0.5rem 0.32rem 0;color:#adb5bd;font-size:0.72rem';
+            ghLink.innerHTML = '<i class="fa fa-external-link"></i>';
+            item.appendChild(btn);
+            item.appendChild(ghLink);
+            container.appendChild(item);
+        }
     }
 
     // ── Sidebar: branches ──
@@ -785,11 +850,37 @@ async function fetchConfiguredRepos() {
     try {
         const r = await fetch('/api/v1/configured-repos');
         if (r.ok) {
-            configuredRepos = await r.json();
+            const data = await r.json();
+            // Backward compat: API may return list[str] (legacy) or list[{name, category}].
+            if (data.length && typeof data[0] === 'string') {
+                configuredRepos = data.map(name => ({ name, category: 'bmya' }));
+            } else {
+                configuredRepos = data;
+            }
+            repoCategoryMap = {};
+            for (const r of configuredRepos) repoCategoryMap[r.name] = r.category || 'bmya';
             render();
         }
     } catch(e) {}
 }
+
+// Sidebar collapsible sections — persisted in localStorage.
+function applyCollapsedState() {
+    document.querySelectorAll('.sidebar-section').forEach(el => {
+        const id = el.dataset.section;
+        el.classList.toggle('collapsed', collapsedSections.has(id));
+    });
+}
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.sidebar-section-toggle');
+    if (!btn) return;
+    const id = btn.dataset.toggle;
+    if (collapsedSections.has(id)) collapsedSections.delete(id);
+    else collapsedSections.add(id);
+    localStorage.setItem('runboat.sidebar.collapsed', JSON.stringify([...collapsedSections]));
+    applyCollapsedState();
+});
+applyCollapsedState();
 
 connect();
 fetchConfiguredRepos();

@@ -45,6 +45,11 @@ class Settings(BaseSettings):
 
     # Configuration for supported repositories and branches.
     repos: list[RepoSettings]
+    # Per-repo category for sidebar grouping. Keyed by short repo name (no org).
+    # Values: "bmya" | "oca" | "cliente". Absent repos default to "bmya".
+    # Loaded from RUNBOAT_REPO_CATEGORIES env var (JSON), rendered by Ansible
+    # from the repo_settings block of runboat_repos.yml.
+    repo_categories: dict[str, str] = {}
     # A user and password to protect the most sensitive operations of the API.
     api_admin_user: str
     api_admin_passwd: str
