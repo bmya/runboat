@@ -52,7 +52,7 @@ async def receive_payload(
                 target_branch,
             )
             return
-        if payload["action"] in ("opened", "synchronize"):
+        if payload["action"] in ("opened", "synchronize", "reopened"):
             pr_number = payload["pull_request"]["number"]
             new_sha = payload["pull_request"]["head"]["sha"]
             background_tasks.add_task(
