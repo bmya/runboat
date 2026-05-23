@@ -24,7 +24,12 @@ set -x
 # Source of truth, in priority order:
 #   1. aggregation.yml at repo root (OCA git-aggregator format): each entry's
 #      `url` gives the org/repo and `branch` the ref to clone.
-#   2. Fallback: RUNBOAT_EXTRA_ADDONS_REPOS env var (comma-separated org/repo list),
+#   2. .gitmodules at repo root (client project layout): each [submodule "X"]
+#      gives `url` and `branch`. The branch HEAD is fetched (NOT the gitlink
+#      SHA pinned in the tree) so the build reflects the latest available
+#      version of each dependency, matching what production picks up on
+#      `git submodule update --remote`.
+#   3. Fallback: RUNBOAT_EXTRA_ADDONS_REPOS env var (comma-separated org/repo list),
 #      cloned at RUNBOAT_GIT_TARGET_BRANCH.
 #
 # Each cloned repo lands in /mnt/data/extra-addons/<repo-name> and is appended
@@ -59,8 +64,37 @@ for line in lines:
         cur_url = None
 PYEOF
 )
+elif [ -f "${ADDONS_DIR}/.gitmodules" ]; then
+    echo "No aggregation.yml; using ${ADDONS_DIR}/.gitmodules as source of truth for extra-addons."
+    # Parse .gitmodules and fetch each submodule at the branch HEAD declared
+    # in its entry. Supports both HTTPS (https://github.com/org/repo.git)
+    # and SSH (git@github.com:org/repo.git) URL forms.
+    EXTRA_ADDONS_SPECS=$(python3 <<PYEOF
+import re
+default_branch = "${RUNBOAT_GIT_TARGET_BRANCH}"
+try:
+    with open("${ADDONS_DIR}/.gitmodules") as f:
+        text = f.read()
+except Exception as e:
+    print(f"# .gitmodules read error: {e}", flush=True)
+    text = ""
+# Split into per-submodule blocks: [submodule "X"] ... [submodule "Y"] ...
+blocks = re.split(r"\[submodule\s+\"[^\"]+\"\]", text)[1:]
+for block in blocks:
+    url_m = re.search(r"^\s*url\s*=\s*(.+?)\s*\$", block, re.MULTILINE)
+    if not url_m:
+        continue
+    url = url_m.group(1).strip()
+    br_m = re.search(r"^\s*branch\s*=\s*(.+?)\s*\$", block, re.MULTILINE)
+    branch = br_m.group(1).strip() if br_m else default_branch
+    # Extract org/repo. https://github.com/org/repo(.git)? or git@github.com:org/repo(.git)?
+    gm = re.search(r"github\.com[:/]([^/]+/[^/.]+?)(?:\.git)?/?\$", url)
+    if gm:
+        print(f"{gm.group(1)} {branch}")
+PYEOF
+)
 elif [ -n "${RUNBOAT_EXTRA_ADDONS_REPOS:-}" ]; then
-    echo "No aggregation.yml; using RUNBOAT_EXTRA_ADDONS_REPOS env var."
+    echo "No aggregation.yml or .gitmodules; using RUNBOAT_EXTRA_ADDONS_REPOS env var."
     for REPO in $(echo "${RUNBOAT_EXTRA_ADDONS_REPOS}" | tr ',' ' '); do
         EXTRA_ADDONS_SPECS+="${REPO} ${RUNBOAT_GIT_TARGET_BRANCH}"$'\n'
     done
