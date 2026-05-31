@@ -29,8 +29,16 @@ set -x
 #      SHA pinned in the tree) so the build reflects the latest available
 #      version of each dependency, matching what production picks up on
 #      `git submodule update --remote`.
-#   3. Fallback: RUNBOAT_EXTRA_ADDONS_REPOS env var (comma-separated org/repo list),
-#      cloned at RUNBOAT_GIT_TARGET_BRANCH.
+#
+# ADDITIVE on top of 1/2 (not a fallback): RUNBOAT_EXTRA_ADDONS_REPOS env var,
+# a comma-separated list of `org/repo` or `org/repo@branch`. Used to inject
+# dependencies the repo itself does NOT declare — e.g. base Odoo + Enterprise +
+# design-themes for client project repos, which keep their own addons as git
+# submodules (so a developer's `git submodule add` is picked up automatically
+# via .gitmodules) while Enterprise comes from the baked image in production.
+# Pin with @branch (e.g. bmya/enterprise@18.0) since these live on the Odoo
+# version branch, not the repo's prd/sta target branch. Defaults to
+# RUNBOAT_GIT_TARGET_BRANCH when @branch is omitted.
 #
 # Each cloned repo lands in /mnt/data/extra-addons/<repo-name> and is appended
 # to ADDONS_PATH. Missing branches are silently skipped (warning only).
@@ -93,10 +101,19 @@ for block in blocks:
         print(f"{gm.group(1)} {branch}")
 PYEOF
 )
-elif [ -n "${RUNBOAT_EXTRA_ADDONS_REPOS:-}" ]; then
-    echo "No aggregation.yml or .gitmodules; using RUNBOAT_EXTRA_ADDONS_REPOS env var."
-    for REPO in $(echo "${RUNBOAT_EXTRA_ADDONS_REPOS}" | tr ',' ' '); do
-        EXTRA_ADDONS_SPECS+="${REPO} ${RUNBOAT_GIT_TARGET_BRANCH}"$'\n'
+fi
+
+# Additive: append RUNBOAT_EXTRA_ADDONS_REPOS specs regardless of whether
+# aggregation.yml or .gitmodules was the primary source. Each spec is
+# `org/repo` (cloned at RUNBOAT_GIT_TARGET_BRANCH) or `org/repo@branch`.
+if [ -n "${RUNBOAT_EXTRA_ADDONS_REPOS:-}" ]; then
+    echo "Appending RUNBOAT_EXTRA_ADDONS_REPOS: ${RUNBOAT_EXTRA_ADDONS_REPOS}"
+    for SPEC in $(echo "${RUNBOAT_EXTRA_ADDONS_REPOS}" | tr ',' ' '); do
+        case "${SPEC}" in
+            *@*) EXTRA_REPO="${SPEC%@*}"; EXTRA_BRANCH="${SPEC#*@}";;
+            *)   EXTRA_REPO="${SPEC}";    EXTRA_BRANCH="${RUNBOAT_GIT_TARGET_BRANCH}";;
+        esac
+        EXTRA_ADDONS_SPECS+="${EXTRA_REPO} ${EXTRA_BRANCH}"$'\n'
     done
 fi
 
