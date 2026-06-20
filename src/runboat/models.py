@@ -218,7 +218,7 @@ class Build(BaseModel):
             commit_info.repo,
             commit_info.git_commit,
             GitHubStatusState.pending,
-            target_url=None,
+            target_url=f"{settings.base_url}/builds/{name}?live",
         )
 
     async def start(self) -> None:
@@ -293,7 +293,7 @@ class Build(BaseModel):
             self.commit_info.repo,
             self.commit_info.git_commit,
             GitHubStatusState.pending,
-            target_url=None,
+            target_url=self.live_link,
         )
 
     async def initialize(self) -> None:
