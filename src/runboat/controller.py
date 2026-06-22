@@ -47,6 +47,12 @@ class Controller:
         self._wakeup_stopper = asyncio.Event()
         self._wakeup_undeployer = asyncio.Event()
         self._wakeup_cleaner = asyncio.Event()
+        # Slugs of builds currently being deployed but not yet visible in db
+        # (the deployment_watcher lags behind Build.deploy). Guards against
+        # duplicate builds for the same commit when webhook events arrive in a
+        # burst (GitHub retries, upstream-fanout landing next to a push).
+        self._inflight_slugs: set[str] = set()
+        self._deploy_lock = asyncio.Lock()
         self.db = BuildsDb()
         self.db.register_listener(self)
 
@@ -98,14 +104,24 @@ class Controller:
 
     async def deploy_commit(self, commit_info: CommitInfo) -> None:
         """Deploy build for a commit, or do nothing if build already exist."""
-        build = self.db.get_for_commit(
-            repo=commit_info.repo,
-            target_branch=commit_info.target_branch,
-            pr=commit_info.pr,
-            git_commit=commit_info.git_commit,
+        slug = Build.make_slug(commit_info)
+        async with self._deploy_lock:
+            build = self.db.get_for_commit(
+                repo=commit_info.repo,
+                target_branch=commit_info.target_branch,
+                pr=commit_info.pr,
+                git_commit=commit_info.git_commit,
+            )
+            if build is not None or slug in self._inflight_slugs:
+                return
+            self._inflight_slugs.add(slug)
+        # Safety net: drop the in-flight mark even if the deployment never shows
+        # up in the watcher (e.g. Build.deploy failed). Normally the watcher
+        # clears it as soon as the deployment is observed.
+        asyncio.get_event_loop().call_later(
+            120, self._inflight_slugs.discard, slug
         )
-        if build is None:
-            await Build.deploy(commit_info)
+        await Build.deploy(commit_info)
 
     async def undeploy_builds(
         self,
@@ -163,6 +179,7 @@ class Controller:
             if event_type in (None, "ADDED", "MODIFIED"):
                 build = Build.from_deployment(deployment)
                 self.db.add(build)
+                self._inflight_slugs.discard(build.slug)
             elif event_type == "DELETED":
                 self.db.remove(build_name)
 

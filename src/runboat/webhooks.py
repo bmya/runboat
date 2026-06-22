@@ -70,7 +70,12 @@ async def receive_payload(
                     git_commit=new_sha,
                 ),
             )
-        elif payload["action"] in ("closed",):
+        elif payload["action"] == "closed" and not payload["pull_request"].get(
+            "merged"
+        ):
+            # Only tear down builds for PRs closed WITHOUT merging (abandoned).
+            # Merged PRs keep their build — cleanup is handled by the periodic
+            # reapers (cleanup-superseded-builds / cleanup-old-pods crons).
             background_tasks.add_task(
                 controller.undeploy_builds,
                 repo=repo,

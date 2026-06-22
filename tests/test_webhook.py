@@ -114,7 +114,8 @@ def test_webhook_github_pr_unsupported_branch(
     mock.assert_not_called()
 
 
-def test_webhook_github_pr_close(mocker: MockerFixture) -> None:
+def test_webhook_github_pr_close_unmerged(mocker: MockerFixture) -> None:
+    """PR closed WITHOUT merging (abandoned) → tear down its builds."""
     mock = mocker.patch("fastapi.BackgroundTasks.add_task")
     response = client.post(
         "/webhooks/github",
@@ -129,6 +130,7 @@ def test_webhook_github_pr_close(mocker: MockerFixture) -> None:
                     "ref": "15.0",
                 },
                 "number": 381,
+                "merged": False,
             },
         },
     )
@@ -138,6 +140,30 @@ def test_webhook_github_pr_close(mocker: MockerFixture) -> None:
         repo="oca/mis-builder",
         pr=381,
     )
+
+
+def test_webhook_github_pr_close_merged_keeps_build(mocker: MockerFixture) -> None:
+    """PR closed via MERGE → build is kept (cleanup is left to the reapers)."""
+    mock = mocker.patch("fastapi.BackgroundTasks.add_task")
+    response = client.post(
+        "/webhooks/github",
+        headers={
+            "X-GitHub-Event": "pull_request",
+        },
+        json={
+            "action": "closed",
+            "repository": {"full_name": "oca/mis-builder"},
+            "pull_request": {
+                "base": {
+                    "ref": "15.0",
+                },
+                "number": 381,
+                "merged": True,
+            },
+        },
+    )
+    response.raise_for_status()
+    mock.assert_not_called()
 
 
 def test_verify_github_signature() -> None:
