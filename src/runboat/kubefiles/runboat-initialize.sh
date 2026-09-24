@@ -24,9 +24,25 @@ if [ -n "${OCA_INSTALL_EXTRA_MODULES:-}" ]; then
     fi
 fi
 
+# Language. Up to Odoo 19 it is loaded together with the install. From 20 on it
+# is loaded in a second step, once the addons are installed: with demo data and
+# a non-English language active during the install, Odoo 20.0 fails (verified
+# 2026-09-24 up to odoo 72d9be2f10f) when `l10n_us_account` auto-installs.
+# account/models/ir_module.py reloads that module's demo with force_update on
+# demo invoices that are already posted, and in es_419 the values differ:
+# "You cannot modify the following readonly fields on the posted move
+# INV/2026/00010". Loading the language afterwards only installs translations
+# (base.language.install), so it never goes through that reload.
+# ODOO_VERSION comes from the oca-ci image.
+ODOO_MAJOR=$(echo "${ODOO_VERSION:-}" | grep -oE '^[0-9]+' || true)
+LOAD_LANG_AFTER_INSTALL=""
 ODOO_INIT_EXTRA_ARGS=""
 if [ -n "${RUNBOAT_LOAD_LANG:-}" ]; then
-    ODOO_INIT_EXTRA_ARGS="${ODOO_INIT_EXTRA_ARGS} --load-language=${RUNBOAT_LOAD_LANG}"
+    if [ "${ODOO_MAJOR:-0}" -ge 20 ]; then
+        LOAD_LANG_AFTER_INSTALL="${RUNBOAT_LOAD_LANG}"
+    else
+        ODOO_INIT_EXTRA_ARGS="${ODOO_INIT_EXTRA_ARGS} --load-language=${RUNBOAT_LOAD_LANG}"
+    fi
 fi
 
 # In Odoo 19+, demo data is not loaded by default. We enable it via $ODOO_RC,
@@ -57,6 +73,21 @@ if ! unbuffer $(which odoo || which openerp-server) \
     echo "[runboat-init] Module installation FAILED; dropping main DB."
     dropdb --if-exists ${PGDATABASE}
     exit 1
+fi
+
+# Second step of the language (Odoo 20+, see above). As the one-step load did,
+# the admin (uid 2, same assumption as runboat-test.sh) is left in it.
+if [ -n "${LOAD_LANG_AFTER_INSTALL}" ]; then
+    if ! unbuffer $(which odoo || which openerp-server) \
+        --data-dir=/mnt/data/odoo-data-dir \
+        -d ${PGDATABASE} \
+        --load-language=${LOAD_LANG_AFTER_INSTALL} \
+        --stop-after-init; then
+        echo "[runboat-init] Loading language ${LOAD_LANG_AFTER_INSTALL} FAILED; dropping main DB."
+        dropdb --if-exists ${PGDATABASE}
+        exit 1
+    fi
+    psql -d "${PGDATABASE}" -c "UPDATE res_partner SET lang='${LOAD_LANG_AFTER_INSTALL}' WHERE id=(SELECT partner_id FROM res_users WHERE id=2);" > /dev/null
 fi
 
 # Save installed modules list so runboat-test.sh can use mode "all".
