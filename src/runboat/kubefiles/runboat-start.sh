@@ -17,6 +17,12 @@ pip list
 # Make sure users cannot create databases.
 echo "admin_passwd=$(python3 -c 'import secrets; print(secrets.token_hex())')" >> ${ODOO_RC}
 
+# Odoo >= 20 listens on 127.0.0.1 when http_interface is empty: the pod never
+# becomes Ready (the TCP probes target the pod IP) and gets restarted in a loop.
+# Set in the config file rather than as --http-interface: an unknown key in the
+# .cfg is ignored, while an unknown flag makes odoo-bin exit on old versions.
+echo "http_interface=0.0.0.0" >> ${ODOO_RC}
+
 # Add extra addons repos (cloned during init) to ADDONS_PATH.
 # The init job exported ADDONS_PATH but that change is not persisted across pods,
 # so we reconstruct it here by scanning /mnt/data/extra-addons/.
