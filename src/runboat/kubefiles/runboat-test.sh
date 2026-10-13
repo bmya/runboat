@@ -39,8 +39,13 @@ oca_wait_for_postgres
 # (res.lang.active defaults to False). With the admin in an inactive language
 # every read of res.users.lang fails with "Wrong value for res.users.lang:
 # 'en_US'", e.g. base's TestXMLRPC through context_get.
+# install_lang also left the language as the ir.default of res.partner.lang, and
+# new partners take it: with en_US active too, base's
+# TestPartnerForm.test_lang_computation_form_view expects get_installed()[0]
+# (en_US, sorted by name) and gets es_419. So the default moves to en_US as well.
 if [ "${RUNBOAT_TESTS_FORCE_EN_US:-1}" = "1" ]; then
     psql -d "${PGDATABASE}" -c "UPDATE res_lang SET active=true WHERE code='en_US';" > /dev/null
+    psql -d "${PGDATABASE}" -c "UPDATE ir_default SET json_value='\"en_US\"' WHERE user_id IS NULL AND company_id IS NULL AND field_id=(SELECT id FROM ir_model_fields WHERE model='res.partner' AND name='lang');" > /dev/null
     psql -d "${PGDATABASE}" -c "UPDATE res_partner SET lang='en_US' WHERE id=(SELECT partner_id FROM res_users WHERE id=2);" > /dev/null
 fi
 
