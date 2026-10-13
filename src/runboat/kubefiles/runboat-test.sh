@@ -34,7 +34,13 @@ oca_wait_for_postgres
 # has es_419 available; preview users can switch lang in the UI.
 # res_users.lang is a related field to partner_id.lang, so update res_partner.
 # Opt-out by setting RUNBOAT_TESTS_FORCE_EN_US=0.
+# en_US must be activated first: up to Odoo 19 the language is loaded during the
+# install, and install_lang only activates that one, so en_US stays inactive
+# (res.lang.active defaults to False). With the admin in an inactive language
+# every read of res.users.lang fails with "Wrong value for res.users.lang:
+# 'en_US'", e.g. base's TestXMLRPC through context_get.
 if [ "${RUNBOAT_TESTS_FORCE_EN_US:-1}" = "1" ]; then
+    psql -d "${PGDATABASE}" -c "UPDATE res_lang SET active=true WHERE code='en_US';" > /dev/null
     psql -d "${PGDATABASE}" -c "UPDATE res_partner SET lang='en_US' WHERE id=(SELECT partner_id FROM res_users WHERE id=2);" > /dev/null
 fi
 
