@@ -11,6 +11,7 @@ spec:
         runboat/job-kind: cleanup
     spec:
       enableServiceLinks: false
+      automountServiceAccountToken: false
       containers:
         - name: cleanup
           image: postgres

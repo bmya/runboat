@@ -301,6 +301,9 @@ class Build(BaseModel):
         # Start initialization job. on_initialize_{started,succeeded,failed} callbacks
         # will follow from job events.
         _logger.info(f"Deploying initialize job for {self}.")
+        # Remove the jobs of a previous initialization (fetch included), or the
+        # apply would leave them as they are.
+        await k8s.kill_job(self.name, job_kind=k8s.DeploymentMode.initialize)
         await self._deploy(
             self.commit_info,
             self.name,

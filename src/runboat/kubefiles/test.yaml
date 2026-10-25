@@ -11,6 +11,7 @@ spec:
         runboat/job-kind: test
     spec:
       enableServiceLinks: false
+      automountServiceAccountToken: false
       containers:
         - name: test
           image: odoo

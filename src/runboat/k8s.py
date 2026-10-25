@@ -1,9 +1,13 @@
 import asyncio
+import base64
+import hashlib
+import ipaddress
 import logging
 import os
 import shutil
 import subprocess
 import tempfile
+import uuid
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from enum import Enum
@@ -17,10 +21,10 @@ from kubernetes import client, config, watch
 from kubernetes.client.exceptions import ApiException
 from kubernetes.client.models.v1_deployment import V1Deployment
 from kubernetes.client.models.v1_job import V1Job
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .github import CommitInfo
-from .settings import BuildSettings, settings
+from .settings import BUILD_AUTH_USER, BuildSettings, settings
 from .utils import sync_to_async, sync_to_async_iterator
 
 _logger = logging.getLogger(__name__)
@@ -143,6 +147,14 @@ class DeploymentMode(str, Enum):
     test = "test"
 
 
+# Job that downloads the code before the initialize job runs it. Not a
+# DeploymentMode: it is created together with the initialize job.
+FETCH_JOB_KIND = "fetch"
+
+# Variables that only the fetch job may see, wherever they are configured.
+_FETCH_ONLY_ENV = ("GITHUB_TOKEN",)
+
+
 class DeploymentVars(BaseModel):
     namespace: str
     mode: DeploymentMode
@@ -154,8 +166,20 @@ class DeploymentVars(BaseModel):
     image_tag: str
     build_env: dict[str, str]
     build_secret_env: dict[str, str]
+    build_fetch_secret_env: dict[str, str] = {}
     build_template_vars: dict[str, str]
     test_modules: str = ""
+    isolated: bool = False
+    # htpasswd line for the build ingresses (isolated builds only).
+    basic_auth_users: str = ""
+    # Ties the initialize job to the fetch job created in the same apply, so a
+    # reinitialization never picks up the data of the previous fetch.
+    init_nonce: str = Field(default_factory=lambda: uuid.uuid4().hex)
+
+
+def htpasswd_sha(user: str, password: str) -> str:
+    digest = base64.b64encode(hashlib.sha1(password.encode()).digest()).decode()
+    return f"{user}:{{SHA}}{digest}"
 
 
 def make_deployment_vars(
@@ -167,6 +191,20 @@ def make_deployment_vars(
     test_modules: str = "",
 ) -> DeploymentVars:
     image_name, image_tag = _split_image_name_tag(build_settings.image)
+    secret_env = settings.build_secret_env | build_settings.secret_env
+    fetch_secret_env = settings.build_fetch_secret_env | build_settings.fetch_secret_env
+    # A GITHUB_TOKEN still configured in the build secret env (configuration
+    # older than the fetch job) is moved to the fetch job: it must never reach
+    # a pod that runs the code under test.
+    for key in _FETCH_ONLY_ENV:
+        if key in secret_env:
+            fetch_secret_env.setdefault(key, secret_env.pop(key))
+    isolated = settings.is_isolated(commit_info.repo)
+    build_env = settings.build_env | build_settings.env
+    if isolated:
+        # The egress policy of an isolated build allows Postgres by IP: a host
+        # name there would leave the build without a database.
+        ipaddress.ip_address(build_env.get("PGHOST", ""))
     return DeploymentVars(
         mode=mode,
         namespace=settings.build_namespace,
@@ -176,10 +214,19 @@ def make_deployment_vars(
         commit_info=commit_info,
         image_name=image_name,
         image_tag=image_tag,
-        build_env=settings.build_env | build_settings.env,
-        build_secret_env=settings.build_secret_env | build_settings.secret_env,
+        build_env=build_env,
+        build_secret_env=secret_env,
+        build_fetch_secret_env=fetch_secret_env,
         build_template_vars=settings.build_template_vars | build_settings.template_vars,
         test_modules=test_modules,
+        isolated=isolated,
+        basic_auth_users=(
+            htpasswd_sha(
+                BUILD_AUTH_USER, settings.build_auth_password(commit_info.repo)
+            )
+            if isolated
+            else ""
+        ),
     )
 
 
@@ -266,19 +313,31 @@ async def delete_deployment_resources(build_name: str) -> None:
 @sync_to_async
 def kill_job(build_name: str, job_kind: DeploymentMode) -> None:
     # TODO delete all resources with runboat/build and runboat/job-kind label
-    assert job_kind in (DeploymentMode.initialize, DeploymentMode.cleanup, DeploymentMode.test)
+    assert job_kind in (
+        DeploymentMode.initialize,
+        DeploymentMode.cleanup,
+        DeploymentMode.test,
+    )
+    kinds = [job_kind.value]
+    if job_kind == DeploymentMode.initialize:
+        # The fetch job goes with its initialize job. A completed fetch job left
+        # behind would also make the next `kubectl apply` a no-op (a Job's pod
+        # template is immutable), so the code would not be downloaded again.
+        kinds.append(FETCH_JOB_KIND)
     batchv1 = client.BatchV1Api()
-    batchv1.delete_collection_namespaced_job(
-        namespace=settings.build_namespace,
-        label_selector=f"runboat/build={build_name},runboat/job-kind={job_kind.value}",
-        grace_period_seconds=0,
-    )
     corev1 = client.CoreV1Api()
-    corev1.delete_collection_namespaced_pod(
-        namespace=settings.build_namespace,
-        label_selector=f"runboat/build={build_name},runboat/job-kind={job_kind.value}",
-        grace_period_seconds=0,
-    )
+    for kind in kinds:
+        selector = f"runboat/build={build_name},runboat/job-kind={kind}"
+        batchv1.delete_collection_namespaced_job(
+            namespace=settings.build_namespace,
+            label_selector=selector,
+            grace_period_seconds=0,
+        )
+        corev1.delete_collection_namespaced_pod(
+            namespace=settings.build_namespace,
+            label_selector=selector,
+            grace_period_seconds=0,
+        )
 
 
 @sync_to_async

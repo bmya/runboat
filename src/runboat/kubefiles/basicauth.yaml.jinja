@@ -1,0 +1,10 @@
+# Isolated builds: Odoo and MailHog ask for a password, unique per repo (see
+# Settings.build_auth_password). The secret is generated in the kustomization.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: basicauth
+spec:
+  basicAuth:
+    secret: "{{ build_name }}-basicauth"
+    removeHeader: true

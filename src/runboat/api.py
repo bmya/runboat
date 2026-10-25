@@ -1,11 +1,13 @@
 import asyncio
 import datetime
+import re
 from collections.abc import AsyncGenerator
 
 import httpx
 from ansi2html import Ansi2HTMLConverter
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPBasicCredentials
 from pydantic import BaseModel, ConfigDict
 from sse_starlette.sse import EventSourceResponse
 from starlette.status import HTTP_404_NOT_FOUND
@@ -13,7 +15,7 @@ from starlette.status import HTTP_404_NOT_FOUND
 from . import github, models
 from .controller import Controller, controller
 from .db import SortOrder
-from .deps import authenticated
+from .deps import authenticated, can_see_repo, viewer
 from .settings import settings
 
 router = APIRouter()
@@ -68,9 +70,31 @@ class PrInfo(BaseModel):
     title: str
 
 
+Viewer = HTTPBasicCredentials | None
+# Endpoints that already require the admin (Depends(authenticated)).
+ADMIN = HTTPBasicCredentials(
+    username=settings.api_admin_user, password=settings.api_admin_passwd
+)
+
+
+def _require(repo: str, credentials: Viewer) -> None:
+    if not can_see_repo(repo, credentials):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+
 @router.get("/pr-info", response_model=PrInfo)
-async def pr_info(repo: str, pr: int) -> PrInfo:
-    """Proxy GitHub PR info (head branch name + title) for frontend search."""
+async def pr_info(repo: str, pr: int, credentials: Viewer = Depends(viewer)) -> PrInfo:
+    """Proxy GitHub PR info (head branch name + title) for frontend search.
+
+    Only for configured repos: it queries GitHub with the controller's token,
+    which reads private repos.
+    """
+    if not any(re.match(r.repo, repo, re.IGNORECASE) for r in settings.repos):
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND)
+    _require(repo, credentials)
     headers = {"Accept": "application/vnd.github.v3+json"}
     if settings.github_token:
         headers["Authorization"] = f"token {settings.github_token}"
@@ -91,13 +115,16 @@ class ConfiguredRepo(BaseModel):
 
 
 @router.get("/configured-repos", response_model=list[ConfiguredRepo])
-async def configured_repos() -> list[ConfiguredRepo]:
+async def configured_repos(
+    credentials: Viewer = Depends(viewer),
+) -> list[ConfiguredRepo]:
     """Return all unique repo names + category extracted from RUNBOAT_REPOS.
 
     Category is looked up in settings.repo_categories by the short repo name
     (the part after the org). Repos absent from that map default to "bmya".
     """
     import re as _re
+
     repos: set[str] = set()
     for repo_settings in settings.repos:
         pattern = repo_settings.repo.strip("^$")
@@ -116,6 +143,7 @@ async def configured_repos() -> list[ConfiguredRepo]:
             category=categories.get(full.split("/", 1)[-1], "bmya"),
         )
         for full in sorted(repos)
+        if can_see_repo(full, credentials)
     ]
 
 
@@ -125,8 +153,8 @@ async def controller_status() -> Controller:
 
 
 @router.get("/repos", response_model=list[Repo])
-async def repos() -> list[models.Repo]:
-    return controller.db.repos()
+async def repos(credentials: Viewer = Depends(viewer)) -> list[models.Repo]:
+    return [r for r in controller.db.repos() if can_see_repo(r.name, credentials)]
 
 
 @router.get(
@@ -140,12 +168,15 @@ async def builds(
     branch: str | None = None,
     pr: int | None = None,
     status: models.BuildStatus | None = None,
+    credentials: Viewer = Depends(viewer),
 ) -> list[models.Build]:
-    return list(
-        controller.db.search(
+    return [
+        b
+        for b in controller.db.search(
             repo=repo, target_branch=target_branch, branch=branch, pr=pr, status=status
         )
-    )
+        if can_see_repo(b.commit_info.repo, credentials)
+    ]
 
 
 @router.delete(
@@ -181,24 +212,25 @@ async def trigger_pull(repo: str, pr: int) -> None:
     await controller.deploy_commit(commit_info)
 
 
-async def _build_by_name(name: str) -> models.Build:
+async def _build_by_name(name: str, credentials: Viewer = None) -> models.Build:
     build = await controller.get_build(name)
     if build is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    _require(build.commit_info.repo, credentials)
     return build
 
 
 @router.get("/builds/{name}", response_model=Build)
-async def build(name: str) -> models.Build:
-    return await _build_by_name(name)
+async def build(name: str, credentials: Viewer = Depends(viewer)) -> models.Build:
+    return await _build_by_name(name, credentials)
 
 
 @router.get(
     "/builds/{name}/init-log",
     response_class=HTMLResponse,
 )
-async def init_log(name: str) -> str:
-    build = await _build_by_name(name)
+async def init_log(name: str, credentials: Viewer = Depends(viewer)) -> str:
+    build = await _build_by_name(name, credentials)
     log = await build.init_log()
     if not log:
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No log found.")
@@ -209,8 +241,8 @@ async def init_log(name: str) -> str:
     "/builds/{name}/log",
     response_class=HTMLResponse,
 )
-async def log(name: str) -> str:
-    build = await _build_by_name(name)
+async def log(name: str, credentials: Viewer = Depends(viewer)) -> str:
+    build = await _build_by_name(name, credentials)
     log = await build.log()
     if not log:
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No log found.")
@@ -218,30 +250,30 @@ async def log(name: str) -> str:
 
 
 @router.post("/builds/{name}/start")
-async def start_build(name: str) -> None:
+async def start_build(name: str, credentials: Viewer = Depends(viewer)) -> None:
     """Start the deployment."""
-    build = await _build_by_name(name)
+    build = await _build_by_name(name, credentials)
     await build.start()
 
 
 @router.post("/builds/{name}/stop")
-async def stop_build(name: str) -> None:
+async def stop_build(name: str, credentials: Viewer = Depends(viewer)) -> None:
     """Stop the deployment."""
-    build = await _build_by_name(name)
+    build = await _build_by_name(name, credentials)
     await build.stop()
 
 
 @router.post("/builds/{name}/reset")
-async def reset_build(name: str) -> None:
+async def reset_build(name: str, credentials: Viewer = Depends(viewer)) -> None:
     """Redeploy, so as to reinitialize."""
-    build = await _build_by_name(name)
+    build = await _build_by_name(name, credentials)
     await build.redeploy()
 
 
 @router.delete("/builds/{name}", dependencies=[Depends(authenticated)])
 async def undeploy_build(name: str) -> None:
     """Delete the deployment and drop the database."""
-    build = await _build_by_name(name)
+    build = await _build_by_name(name, ADMIN)
     await build.undeploy()
 
 
@@ -252,7 +284,7 @@ class TestRequest(BaseModel):
 @router.post("/builds/{name}/test", dependencies=[Depends(authenticated)])
 async def run_tests(name: str, body: TestRequest) -> None:
     """Run tests on an initialized build. modules: comma-separated, 'all', or 'repo'."""
-    build = await _build_by_name(name)
+    build = await _build_by_name(name, ADMIN)
     try:
         await build.run_tests(body.modules)
     except ValueError as e:
@@ -260,8 +292,8 @@ async def run_tests(name: str, body: TestRequest) -> None:
 
 
 @router.get("/builds/{name}/test-log", response_class=HTMLResponse)
-async def test_log(name: str) -> str:
-    build = await _build_by_name(name)
+async def test_log(name: str, credentials: Viewer = Depends(viewer)) -> str:
+    build = await _build_by_name(name, credentials)
     log = await build.test_log()
     if not log:
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No test log found.")
@@ -277,7 +309,9 @@ class BuildEventSource:
         branch: str | None = None,
         pr: int | None = None,
         build_name: str | None = None,
+        credentials: Viewer = None,
     ):
+        self.credentials = credentials
         self.queue: asyncio.Queue[str] = asyncio.Queue()
         self.request = request
         self.repo = repo
@@ -304,6 +338,8 @@ class BuildEventSource:
             return
         if self.build_name and build.name != self.build_name:
             return
+        if not can_see_repo(build.commit_info.repo, self.credentials):
+            return
         self.queue.put_nowait(self._serialize(event, build))
 
     async def events(self) -> AsyncGenerator[str]:
@@ -315,6 +351,8 @@ class BuildEventSource:
             name=self.build_name,
             sort=SortOrder.asc,
         ):
+            if not can_see_repo(build.commit_info.repo, self.credentials):
+                continue
             yield self._serialize(models.BuildEvent.modified, build)
         while True:
             try:
@@ -336,8 +374,9 @@ async def build_events(
     branch: str | None = None,
     pr: int | None = None,
     build_name: str | None = None,
+    credentials: Viewer = Depends(viewer),
 ) -> EventSourceResponse:
     event_source = BuildEventSource(
-        request, repo, target_branch, branch, pr, build_name
+        request, repo, target_branch, branch, pr, build_name, credentials
     )
     return EventSourceResponse(event_source.events())

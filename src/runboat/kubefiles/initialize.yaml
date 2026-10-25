@@ -11,6 +11,7 @@ spec:
         runboat/job-kind: initialize
     spec:
       enableServiceLinks: false
+      automountServiceAccountToken: false
       containers:
         - name: initialize
           image: odoo
@@ -24,6 +25,8 @@ spec:
                 name: odoosecretenv
             - configMapRef:
                 name: odooenv
+            - configMapRef:
+                name: initnonce
           args: ["bash", "/runboat/runboat-initialize.sh"]
           resources:
             limits:
