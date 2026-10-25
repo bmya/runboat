@@ -1,0 +1,54 @@
+# Downloads the code of the build (the repo under test and its extra addons
+# repos) into the data volume. It is the only pod with GITHUB_TOKEN, and it
+# never runs that code: installing and running happen in the initialize job,
+# which waits for this one (see runboat-clone-and-install.sh) and has no token.
+# It also stays out of the egress policy of isolated builds, that is, it is the
+# only pod of an isolated build that can reach GitHub.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fetch
+  labels:
+    runboat/job-kind: fetch
+spec:
+  template:
+    metadata:
+      labels:
+        runboat/job-kind: fetch
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      containers:
+        - name: fetch
+          image: odoo
+          volumeMounts:
+            - name: runboat-scripts
+              mountPath: /runboat
+            - name: data
+              mountPath: /mnt/data
+          envFrom:
+            - secretRef:
+                name: fetchsecretenv
+            - configMapRef:
+                name: odooenv
+            - configMapRef:
+                name: initnonce
+          args: ["bash", "/runboat/runboat-fetch.sh"]
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+      volumes:
+        - name: runboat-scripts
+          configMap:
+            name: runboat-scripts
+        - name: data
+          persistentVolumeClaim:
+            claimName: data
+      restartPolicy: Never
+  completions: 1
+  backoffLimit: 0
+  activeDeadlineSeconds: 900

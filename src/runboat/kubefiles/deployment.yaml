@@ -21,6 +21,7 @@ spec:
       # let Odoo stop gracefully to disconnect from postgres
       terminationGracePeriodSeconds: 10
       enableServiceLinks: false
+      automountServiceAccountToken: false
       containers:
         - name: odoo
           image: odoo

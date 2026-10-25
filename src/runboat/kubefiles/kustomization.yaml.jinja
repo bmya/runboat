@@ -5,14 +5,21 @@ resources:
   - service.yaml
   - ingress_odoo.yaml
   - ingress_mailhog.yaml
+  {%- if isolated %}
+  - basicauth.yaml
+  {%- endif %}
   {%- elif mode == "initialize" %}
   - pvc.yaml
+  - fetch.yaml
   - initialize.yaml
   {%- elif mode == "cleanup" %}
   - cleanup.yaml
   {%- elif mode == "test" %}
   - pvc.yaml
   - test.yaml
+  {%- endif %}
+  {%- if isolated %}
+  - networkpolicy.yaml
   {%- endif %}
 
 namespace: {{ namespace }}
@@ -45,6 +52,19 @@ secretGenerator:
       {%- for key, value in build_secret_env.items() %}
       - {{ key }}={{ value }}
       {%- endfor %}
+  {%- if mode == "initialize" %}
+  - name: fetchsecretenv
+    literals:
+      - RUNBOAT_FETCH=1
+      {%- for key, value in build_fetch_secret_env.items() %}
+      - {{ key }}={{ value }}
+      {%- endfor %}
+  {%- endif %}
+  {%- if mode == "deployment" and isolated %}
+  - name: basicauth
+    literals:
+      - users={{ basic_auth_users }}
+  {%- endif %}
 
 configMapGenerator:
   - name: odooenv
@@ -54,14 +74,21 @@ configMapGenerator:
       - RUNBOAT_GIT_REPO={{ commit_info.repo }}
       - RUNBOAT_GIT_REF={{ commit_info.git_commit }}
       - RUNBOAT_GIT_TARGET_BRANCH={{ commit_info.target_branch }}
+      - RUNBOAT_ISOLATED={{ "1" if isolated else "0" }}
       {%- for key, value in build_env.items() %}
       - {{ key }}={{ value }}
       {%- endfor %}
       {%- if test_modules %}
       - TEST_MODULES={{ test_modules }}
       {%- endif %}
+  {%- if mode == "initialize" %}
+  - name: initnonce
+    literals:
+      - RUNBOAT_INIT_NONCE={{ init_nonce }}
+  {%- endif %}
   - name: runboat-scripts
     files:
+      - runboat-fetch.sh
       - runboat-clone-and-install.sh
       - runboat-initialize.sh
       - runboat-cleanup.sh
@@ -93,3 +120,14 @@ patches:
       - op: replace
         path: /spec/rules/0/host
         value: {{ build_slug }}.mail.{{ build_domain }}
+  {%- if isolated %}
+  {%- for ingress in ("odoo", "mailhog") %}
+  - target:
+      kind: Ingress
+      name: {{ ingress }}
+    patch: |-
+      - op: add
+        path: /metadata/annotations/traefik.ingress.kubernetes.io~1router.middlewares
+        value: {{ namespace }}-{{ build_name }}-basicauth@kubernetescrd
+  {%- endfor %}
+  {%- endif %}

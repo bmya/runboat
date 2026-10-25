@@ -1,0 +1,26 @@
+# Isolated builds: the pods that install, test and run the code can reach only
+# Postgres. Code written outside BMyA runs here, and without this it could send
+# anything it finds in the build (our addons included) anywhere. The fetch job
+# is left out: it needs GitHub, and it does not run the code.
+# Ingress is not restricted: Traefik must reach Odoo and MailHog.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: egress
+spec:
+  podSelector:
+    matchLabels:
+      runboat/build: "{{ build_name }}"
+    matchExpressions:
+      - key: runboat/job-kind
+        operator: NotIn
+        values: ["fetch"]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: "{{ build_env['PGHOST'] }}/32"
+      ports:
+        - protocol: TCP
+          port: {{ build_env.get('PGPORT', '5432') }}
