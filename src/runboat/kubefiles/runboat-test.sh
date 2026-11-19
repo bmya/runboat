@@ -49,18 +49,29 @@ if [ "${RUNBOAT_TESTS_FORCE_EN_US:-1}" = "1" ]; then
     psql -d "${PGDATABASE}" -c "UPDATE res_partner SET lang='en_US' WHERE id=(SELECT partner_id FROM res_users WHERE id=2);" > /dev/null
 fi
 
+# No fallback to "base": without -u, base's at_install tests run as soon as base
+# loads, before the other installed modules, so every create hits NOT NULL
+# columns the registry does not know yet (res_users.notification_type from mail,
+# res_company.fiscalyear_last_day from account). Dozens of failures that say
+# nothing about the build (bmya-enterprise#272). If there is nothing to test,
+# fail and say why.
 if [ "${TEST_MODULES:-}" = "all" ]; then
-    TEST_MODULES=$(cat /mnt/data/test-modules.txt 2>/dev/null || echo "base")
+    TEST_MODULES=$(cat /mnt/data/test-modules.txt 2>/dev/null || true)
 elif [ "${TEST_MODULES:-}" = "repo" ]; then
-    TEST_MODULES=$(manifestoo --select-addons-dir "${ADDONS_DIR}" list --separator=, 2>/dev/null || echo "base")
+    TEST_MODULES=$(manifestoo --select-addons-dir "${ADDONS_DIR}" list --separator=, 2>/dev/null || true)
 fi
 
-echo "Running tests for modules: ${TEST_MODULES:-base}"
+if [ -z "${TEST_MODULES:-}" ]; then
+    echo "[runboat-test] No modules to test; refusing to fall back to base."
+    exit 1
+fi
+
+echo "Running tests for modules: ${TEST_MODULES}"
 
 # Convert "mod1,mod2" → "/mod1,/mod2" for --test-tags.
 # --test-tags /module runs all tests in the module without requiring an upgrade,
 # which is correct when the DB is already initialized (the build DB is ready).
-TEST_TAGS=$(echo "${TEST_MODULES:-base}" | tr ',' '\n' | sed 's|^|/|' | paste -sd ',')
+TEST_TAGS=$(echo "${TEST_MODULES}" | tr ',' '\n' | sed 's|^|/|' | paste -sd ',')
 
 echo "Test tags: ${TEST_TAGS}"
 
